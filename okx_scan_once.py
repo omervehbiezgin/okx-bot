@@ -17,6 +17,8 @@ import sys
 import json
 import time
 import statistics
+from datetime import datetime, timedelta, timezone
+
 import requests
 
 BASE = "https://www.okx.com"
@@ -66,9 +68,33 @@ TOP_N = 100                      # hacme göre ilk N USDT perpetual
 MIN_QUOTE_VOLUME = 10_000_000    # 24s USDT hacmi altı coinler elenir
 MAX_ALERTS_PER_SCAN = 10         # bir mesajda en fazla kaç coin listelensin
 REQUEST_PAUSE = 0.1
+# Bir görev state'te İLK KEZ görülüyorsa (yeni özellik eklendi veya önbellek silindi) ve mum bu
+# süreden (saniye) önce kapanmışsa taranmaz; böylece eski mumlar için geç bildirim gelmez.
+# State'te kaydı olan görevlerde uygulanmaz (GitHub tetiklemesi gecikse bile sinyal kaçmaz).
+# Elle (Run workflow) çalıştırmada da uygulanmaz.
+LATE_LIMIT = {900: 3600, 3600: 10800, 14400: 21600, 86400: 21600, 604800: 43200}
 # -----------------------------------------
 
 session = requests.Session()
+TR = timezone(timedelta(hours=3))                       # Türkiye saati
+
+
+class StaleCandle(Exception):
+    """OKX beklenen mumu henüz "kapandı" olarak sunmadı."""
+
+
+def expect_candle(ts_ms, candle_open):
+    if int(ts_ms) < candle_open * 1000:
+        raise StaleCandle()
+
+
+def candle_stamp(candle_open, sec, late=0):
+    a = datetime.fromtimestamp(candle_open, TR)
+    b = datetime.fromtimestamp(candle_open + sec, TR)
+    txt = f"🕒 Mum (TR saati): {a:%d.%m.%Y %H:%M} → {b:%d.%m.%Y %H:%M}"
+    if late > 1800:                                         # tarama 30 dk'dan fazla gecikmişse belirt
+        txt += f"\n⚠️ Bildirim {late // 3600} sa {late % 3600 // 60} dk gecikmeli (GitHub tetikleme gecikmesi)"
+    return txt
 
 
 def api(path, params):
@@ -113,7 +139,7 @@ def fetch_closed(inst, bar, n):
         after = data[-1][0]
         if len(data) < 100:
             break
-        time.sleep(REQUEST_PAUSE)
+        time.sleep(0.15)                                # history-candles: 20 istek / 2 sn sınırı
     return [r for r in reversed(out) if r[8] == "1"]
 
 
@@ -127,8 +153,7 @@ def analyze_breakout(inst, bar, cfg, candle_open):
         return None
 
     last = rows[-1]
-    if int(last[0]) != candle_open * 1000:              # beklenen mum değilse atla
-        return None
+    expect_candle(last[0], candle_open)
 
     o, c = float(last[1]), float(last[4])
     vol = float(last[7])
@@ -197,8 +222,7 @@ def analyze_ema(inst, cfg, candle_open):
     if len(rows) < n + 2:                               # yeterli geçmişi olmayan coin
         return None
     last = rows[-1]
-    if int(last[0]) != candle_open * 1000:
-        return None
+    expect_candle(last[0], candle_open)
 
     closes = [float(r[4]) for r in rows]
     e = ema_series(closes, n)[-1]
@@ -269,8 +293,9 @@ def analyze_fvg(inst, cfg, candle_open):
     r4 = api("/api/v5/market/candles",
              {"instId": inst, "bar": cfg["react_bar"], "limit": str(cfg["react_limit"])})
     rows = [r for r in reversed(r4) if r[8] == "1"]
-    if len(rows) < 40 or int(rows[-1][0]) != candle_open * 1000:
+    if len(rows) < 40:
         return None
+    expect_candle(rows[-1][0], candle_open)
     t4 = [int(r[0]) // 1000 for r in rows]
     op = [float(r[1]) for r in rows]
     hi = [float(r[2]) for r in rows]
@@ -457,7 +482,10 @@ def last_closed_open(now, sec, off=0):
 def main():
     state = load_state()
     now = int(time.time())
-    manual = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
+    # Elle test: sadece "Run workflow" ile ve test kutusu işaretliyse. Dışarıdan (API ile) tetiklemede
+    # workflow dosyası TEST_RUN=false gönderir, bot normal çalışır. TEST_RUN tanımlı değilse eski davranış.
+    manual = (os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
+              and os.getenv("TEST_RUN", "true").lower() != "false")
 
     tasks = []   # (state_key, tür, ad, cfg, mum açılışı)
     for bar, cfg in BREAKOUT.items():
@@ -482,11 +510,21 @@ def main():
     print(f"{len(symbols)} sembol, taranacak: {[t[0] for t in due]}")
 
     for key, kind, name, cfg, candle_open in due:
-        wait = candle_open + cfg["sec"] + 5 - time.time()   # OKX mumu onaylasın
+        late = now - (candle_open + cfg["sec"])             # mum kaç saniye önce kapandı
+        limit = LATE_LIMIT.get(cfg["sec"], cfg["sec"] * 3)
+        if not manual and key not in state and late > limit:
+            print(f"{key}: ilk kez görülen görev, mum {late // 60} dk önce kapanmış "
+                  f"(sınır {limit // 60} dk), taranmadan geçildi.")
+            state[key] = candle_open
+            save_state(state)
+            continue
+
+        wait = candle_open + cfg["sec"] + 10 - time.time()  # OKX mumu onaylasın
         if wait > 0:
             time.sleep(wait)
 
         hits = []
+        stale = 0
         for inst in symbols:
             try:
                 if kind == "brk":
@@ -495,6 +533,9 @@ def main():
                     r = analyze_fvg(inst, cfg, candle_open)
                 else:
                     r = analyze_ema(inst, cfg, candle_open)
+            except StaleCandle:
+                stale += 1
+                continue
             except Exception as e:
                 print(f"{inst} {key} hata: {e}")
                 time.sleep(1)
@@ -502,6 +543,10 @@ def main():
             time.sleep(REQUEST_PAUSE)
             if r:
                 hits.append(r)
+
+        if stale > len(symbols) * 0.3:                      # OKX mumu henüz onaylamamış: kaydetme, tekrar dene
+            print(f"{key}: OKX mumu henüz onaylamamış ({stale}/{len(symbols)}), sonraki çalışmada tekrar denenecek.")
+            continue
 
         print(f"{key} tarandı, {len(hits)} sonuç.")
         sent_ok = True
@@ -512,6 +557,8 @@ def main():
                 text = msg_fvg(name, hits)
             else:
                 text = msg_ema(name, cfg, hits)
+            head, _, rest = text.partition("\n")             # 2. satıra mum tarih/saat bilgisi ekle
+            text = head + "\n" + candle_stamp(candle_open, cfg["sec"], late) + ("\n" + rest if rest else "")
             sent_ok = send(text)
 
         if sent_ok:                                      # mesaj gitmediyse bir sonraki çalışmada tekrar denenir
