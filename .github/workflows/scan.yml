@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
+    inputs:
+      test:
+        description: "Test mesajı gönder ve eski mumları da tara"
+        type: boolean
+        default: false
 
 concurrency:
   group: okx-scan
@@ -34,6 +39,7 @@ jobs:
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TEST_RUN: ${{ inputs.test }}
 
       - name: Durumu kaydet
         if: always()
