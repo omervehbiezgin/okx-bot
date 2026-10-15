@@ -1,14 +1,22 @@
 """
-OKX perpetual tarayıcı - GitHub Actions için tek seferlik sürüm (v3)
+OKX perpetual tarayıcı - GitHub Actions için tek seferlik sürüm (v5)
 
-Üç tarama türü:
-  1) BREAKOUT : Yatay (dar aralıklı) hareketi ilk kıran mum + hacim onayı.
-                Zaten pump/dump yapmış coinler, aralık geniş olduğu için elenir.
-  2) EMA21 1W : Haftalık mum gövdesi EMA21'i kesip kapandıysa bildirir (açılış EMA'nın
-                bir tarafında, kapanış diğer tarafında; fitil dokunuşu sayılmaz).
-  3) EMA200 1D: Aynı mantık, günlük mum ve EMA200 için.
-  4) FVG      : Günlük grafikteki FVG bölgesine 4H mumla ilk kez gelip tepki alan coinler
-                (yükseliş FVG'si = destek tepkisi, düşüş FVG'si = direnç reddi).
+TradingView göstergesi "OKX Tarayıcı Sinyalleri" ile AYNI kurallar ve varsayılan ayarlar.
+OKX'teki TÜM USDT perpetual (futures) coinleri tarar. Dört tarama türü:
+
+  1) YATAY KIRILIM (15m, 1H, 4H, 1D)
+     Zorunlu şartlar:
+       - Bant: son 'base' mumun aralığı, banttan önceki 'lookback' mumun ortalama mum boyunun
+         (gerçek aralık ortalaması) en fazla 'k' katı genişliğinde (her coin kendi oynaklığına göre)
+       - Bant gerçek olmalı: üst ve alt sınıra (bant genişliğinin %15'i içine) en az 2'şer mum yaklaşmış
+       - Kapanış, bandın dışında en az bant genişliğinin %20'si kadar
+       - Gövde mum boyunun en az %60'ı, kapanış mumun üst (aşağı kırılımda alt) çeyreğinde
+     Yıldızlar: hacim >= 1,5x | mum boyu >= bant ortalamasının 2 katı | üst zaman dilimi EMA21 uyumu
+     Notlar: ✅ bant günlük FVG içinde oluştu | ⚠️ kırılım ters yöndeki günlük FVG'ye doğru (%2)
+  2) EMA21 1W : Haftalık mum gövdesi EMA21'i kesip kapattı (fitil sayılmaz)
+  3) EMA200 1D: Günlük mum gövdesi EMA200'ü kesip kapattı
+  4) FVG'DEN DÖNÜŞ: Günlük FVG'ye 4H mumlarla ilk temas (yakın temas payı dahil), 3 mumluk pencere
+     içinde bölgenin dışında kapanış, geri çekilme ve puan şartları.
 
 Ortam değişkenleri: TG_TOKEN, TG_CHAT_ID
 """
@@ -16,6 +24,7 @@ import os
 import sys
 import json
 import time
+import bisect
 import statistics
 from datetime import datetime, timedelta, timezone
 
@@ -24,21 +33,40 @@ import requests
 BASE = "https://www.okx.com"
 STATE_FILE = "state.json"
 
-# ---------------- AYARLAR ----------------
-# Yatay kırılım ayarları
-#   lookback : hacim için normal değeri hesaplamak üzere bakılan mum sayısı
-#   base     : "yatay bölge" olarak incelenen mum sayısı (son mum hariç)
-#   range    : bu bölgenin (en yüksek / en düşük - 1) * 100 değeri en fazla % kaç olabilir
-#   change   : kırılım mumunun gövdesi (açılış->kapanış) en az % kaç olmalı
-#   ratio, z : hacim, normalin kaç katı / robust z-score
-#   min_usdt : kırılım mumunun en az USDT hacmi
-#   sec      : mum süresi (sn)
+# ---------------- AYARLAR (göstergenin varsayılanlarıyla aynı) ----------------
+# Yatay kırılım
+#   lookback : ortalama mum boyu ve hacim için bakılan mum sayısı (bant öncesi)
+#   base     : bant olarak incelenen mum sayısı (son mum hariç)
+#   k        : bant genişliği, ortalama mum boyunun en fazla kaç katı olabilir
+#   htf      : yıldız için EMA21'ine bakılan bir üst zaman dilimi
 BREAKOUT = {
-    "15m":   dict(lookback=96, base=32, range=2.5,  change=1.0, ratio=2.5, z=3.5, min_usdt=300_000,    sec=900),
-    "1H":    dict(lookback=72, base=24, range=4.0,  change=1.5, ratio=2.5, z=3.5, min_usdt=1_000_000,  sec=3600),
-    "4H":    dict(lookback=60, base=20, range=7.0,  change=2.5, ratio=2.5, z=3.0, min_usdt=3_000_000,  sec=14400),
-    "1Dutc": dict(lookback=40, base=14, range=12.0, change=4.0, ratio=2.0, z=3.0, min_usdt=10_000_000, sec=86400),
+    "15m":   dict(lookback=96, base=32, k=3.5, sec=900,   htf="1H",    htf_sec=3600),
+    "1H":    dict(lookback=72, base=24, k=3.0, sec=3600,  htf="4H",    htf_sec=14400),
+    "4H":    dict(lookback=60, base=20, k=3.0, sec=14400, htf="1Dutc", htf_sec=86400),
+    "1Dutc": dict(lookback=40, base=14, k=2.5, sec=86400, htf="1Wutc", htf_sec=604800),
 }
+BRK_CLOSE_OUT = 0.20     # kapanış, bandın dışında en az bant genişliği x bu oran
+BRK_BODY = 0.60          # gövde / mum boyu
+BRK_CLOSE_POS = 0.75     # kapanış mumun üst (alt) çeyreğinde
+BRK_TOUCH_ZONE = 0.15    # sınıra "yaklaşma" bölgesi: bant genişliği x bu oran
+BRK_MIN_TOUCH = 2        # üst ve alt sınıra en az kaç mum yaklaşmalı
+BRK_STAR_VOL = 1.5       # ⭐ hacim normalin en az kaç katı
+BRK_STAR_SIZE = 2.0      # ⭐ mum boyu bant ortalamasının en az kaç katı
+NOTE_NEAR_PCT = 2.0      # ⚠️ notu: kırılım ters FVG'ye en fazla % kaç uzakta
+NOTE_MAX_ZONES = 60      # kırılım notları için tutulan en fazla açık günlük FVG
+
+# Günlük FVG ve 4H tepki (FVG'den dönüş)
+ATR_DAYS = 14            # günlük ortalama mum boyu kaç günden hesaplanır
+FVG_MIN_GAP_ATR = 0.25   # FVG en az (günlük ort. mum boyu x bu) genişlikte
+FVG_MAX_AGE_DAYS = 45    # bölgeye ilk giriş en fazla kaç günlük FVG'de sayılır
+FVG_NEAR_PCT = 15.0      # son günlük kapanış bölgeden en fazla % kaç uzakta olabilir
+FVG_NEAR_TOUCH = 0.10    # yakın temas payı (günlük ort. mum boyu x bu); 0 = sadece gerçek temas
+FVG_MIN_PULLBACK = 0.5   # bölgeye gelmeden önce en az (günlük ort. mum boyu x bu) geri çekilme
+FVG_WINDOW = 3           # ilk girişten sonra tepki için beklenecek 4H mum (giren mum dahil)
+FVG_WICK = 0.40          # ⭐ fitil, birleşik mum boyunun en az bu oranı
+FVG_VOL = 1.2            # ⭐ hacim, son 30 adet 4H mumun ortancasının en az bu katı
+FVG_MIN_SCORE = 2        # 3 puandan en az kaçı
+FVG_SEC = 14400
 
 # EMA kesişim ayarları (off: mum hizalama ofseti; OKX 1Wutc haftası Pazartesi 00:00 UTC açılır)
 EMA_TASKS = {
@@ -46,37 +74,15 @@ EMA_TASKS = {
     "EMA200_1D":  dict(bar="1Dutc", period=200, bars=420, sec=86400,  off=0),
 }
 
-# FVG (Fair Value Gap) ayarları: bölge GÜNLÜK grafikten bulunur, tepki 4H mumla ölçülür
-#   zone_bar/zone_lookback : bölgenin bulunacağı mum türü ve kaç mum geriye bakılacağı
-#   react_bar/react_limit  : tepkinin ölçüleceği mum türü ve çekilecek mum sayısı (4H için 300 = ~50 gün)
-#   max_age_days     : FVG en fazla kaç gün önce oluşmuş olabilir (react_limit kapsamını aşmasın)
-#   near_pct         : son günlük kapanış bölgeden en fazla % kaç uzakta olabilir (gereksiz istek elemesi)
-#   min_gap          : FVG boşluğu en az % kaç olmalı
-#   min_move         : bölgeye gelmeden önceki hareket en az % (destek: zirveden geri çekilme, direnç: dipten yükseliş)
-#   wick             : 4H tepki fitili, mum aralığının en az bu oranı olmalı (puan şartı)
-#   vol_ratio        : 4H hacim, son 30 mumun medyanının en az kaç katı (puan şartı)
-#   min_score        : 3 puandan (fitil, mum yönü, hacim) en az kaçı gerekli
-#   max_prev_touches : oluşumdan beri bölgeye kaç 4H mum girmiş olabilir (0 = sadece ilk test)
-FVG = {
-    "1Dutc>4H": dict(zone_bar="1Dutc", zone_sec=86400, zone_lookback=60,
-                     react_bar="4H", react_limit=300, sec=14400,
-                     max_age_days=45, near_pct=15.0, min_gap=1.0, min_move=4.0,
-                     wick=0.40, vol_ratio=1.2, min_score=2, max_prev_touches=0),
-}
-
-TOP_N = 100                      # hacme göre ilk N USDT perpetual
-MIN_QUOTE_VOLUME = 10_000_000    # 24s USDT hacmi altı coinler elenir
-MAX_ALERTS_PER_SCAN = 10         # bir mesajda en fazla kaç coin listelensin
+MAX_ALERTS_PER_SCAN = 10         # bir kırılım mesajında en fazla kaç coin listelensin
 REQUEST_PAUSE = 0.1
-# Bir görev state'te İLK KEZ görülüyorsa (yeni özellik eklendi veya önbellek silindi) ve mum bu
-# süreden (saniye) önce kapanmışsa taranmaz; böylece eski mumlar için geç bildirim gelmez.
-# State'te kaydı olan görevlerde uygulanmaz (GitHub tetiklemesi gecikse bile sinyal kaçmaz).
-# Elle (Run workflow) çalıştırmada da uygulanmaz.
+# Bir görev state'te İLK KEZ görülüyorsa ve mum bu süreden (saniye) önce kapanmışsa taranmaz.
 LATE_LIMIT = {900: 3600, 3600: 10800, 14400: 21600, 86400: 21600, 604800: 43200}
-# -----------------------------------------
+# -----------------------------------------------------------------------------
 
 session = requests.Session()
 TR = timezone(timedelta(hours=3))                       # Türkiye saati
+_daily_cache = {}
 
 
 class StaleCandle(Exception):
@@ -92,7 +98,7 @@ def candle_stamp(candle_open, sec, late=0):
     a = datetime.fromtimestamp(candle_open, TR)
     b = datetime.fromtimestamp(candle_open + sec, TR)
     txt = f"🕒 Mum (TR saati): {a:%d.%m.%Y %H:%M} → {b:%d.%m.%Y %H:%M}"
-    if late > 1800:                                         # tarama 30 dk'dan fazla gecikmişse belirt
+    if late > 1800:
         txt += f"\n⚠️ Bildirim {late // 3600} sa {late % 3600 // 60} dk gecikmeli (GitHub tetikleme gecikmesi)"
     return txt
 
@@ -109,6 +115,7 @@ def api(path, params):
 
 
 def get_symbols():
+    """OKX'te işlem gören TÜM USDT perpetual (futures) sözleşmeleri, hacme göre sıralı."""
     data = api("/api/v5/market/tickers", {"instType": "SWAP"})
     rows = []
     for t in data:
@@ -118,15 +125,35 @@ def get_symbols():
         try:
             qv = float(t["volCcy24h"]) * float(t["last"])
         except (ValueError, KeyError):
-            continue
-        if qv >= MIN_QUOTE_VOLUME:
-            rows.append((inst, qv))
+            qv = 0.0
+        rows.append((inst, qv))
     rows.sort(key=lambda x: x[1], reverse=True)
-    return [s for s, _ in rows[:TOP_N]]
+    return [s for s, _ in rows]
+
+
+# ---------------- Mum verisi ----------------
+def candles(inst, bar, limit):
+    """Son kapanmış mumlar (eskiden yeniye). limit en fazla 300."""
+    data = api("/api/v5/market/candles", {"instId": inst, "bar": bar, "limit": str(min(limit, 300))})
+    return [r for r in reversed(data) if r[8] == "1"]
+
+
+def candles_more(inst, bar, n):
+    """En az n kapanmış mum: önce son 300, gerekirse history-candles ile geriye devam."""
+    rows = candles(inst, bar, 300)
+    while len(rows) < n and rows:
+        time.sleep(0.15)
+        data = api("/api/v5/market/history-candles",
+                   {"instId": inst, "bar": bar, "limit": "100", "after": rows[0][0]})
+        older = [r for r in reversed(data) if r[8] == "1"]
+        if not older:
+            break
+        rows = older + rows
+    return rows
 
 
 def fetch_closed(inst, bar, n):
-    """Son n kapanmış mumu (eskiden yeniye) getirir. 100'lük sayfalarla geriye gider."""
+    """Son n kapanmış mumu (eskiden yeniye) history-candles ile getirir (EMA taraması için)."""
     out, after = [], None
     while len(out) < n:
         params = {"instId": inst, "bar": bar, "limit": "100"}
@@ -139,73 +166,20 @@ def fetch_closed(inst, bar, n):
         after = data[-1][0]
         if len(data) < 100:
             break
-        time.sleep(0.15)                                # history-candles: 20 istek / 2 sn sınırı
+        time.sleep(0.15)
     return [r for r in reversed(out) if r[8] == "1"]
 
 
-# ---------------- 1) YATAY KIRILIM ----------------
-def analyze_breakout(inst, bar, cfg, candle_open):
-    data = api("/api/v5/market/candles",
-               {"instId": inst, "bar": bar, "limit": str(cfg["lookback"] + 2)})
-    rows = [r for r in reversed(data) if r[8] == "1"]
-    base = cfg["base"]
-    if len(rows) < base + 5:
-        return None
-
-    last = rows[-1]
-    expect_candle(last[0], candle_open)
-
-    o, c = float(last[1]), float(last[4])
-    vol = float(last[7])
-    if o <= 0 or vol < cfg["min_usdt"]:
-        return None
-
-    # Yatay bölge: son mumdan önceki 'base' mum
-    base_rows = rows[-1 - base:-1]
-    hi = max(float(r[2]) for r in base_rows)
-    lo = min(float(r[3]) for r in base_rows)
-    if lo <= 0:
-        return None
-    rng = (hi / lo - 1) * 100
-    if rng > cfg["range"]:                              # zaten hareketli / geniş aralık -> ele
-        return None
-
-    change = (c / o - 1) * 100
-    if c > hi and change >= cfg["change"]:
-        kind = "UP"
-    elif c < lo and change <= -cfg["change"]:
-        kind = "DOWN"
-    else:
-        return None
-
-    # Hacim onayı
-    hist = [float(r[7]) for r in rows[:-1]]
-    median = statistics.median(hist)
-    mad = statistics.median([abs(v - median) for v in hist])
-    if median <= 0 or mad <= 0:
-        return None
-    ratio = vol / median
-    z = 0.6745 * (vol - median) / mad
-    if ratio < cfg["ratio"] or z < cfg["z"]:
-        return None
-
-    # Bilgi amaçlı: yataydan önceki trend (dönüş mü devam mı)
-    prev_trend = None
-    if len(rows) >= 2 * base + 2:
-        start_close = float(rows[-1 - base][4])
-        before_close = float(rows[-1 - 2 * base][4])
-        if before_close > 0:
-            pt = (start_close / before_close - 1) * 100
-            if abs(pt) >= rng:                          # yataydan belirgin bir trendle gelmiş
-                prev_trend = "UP" if pt > 0 else "DOWN"
-
-    return {"inst": inst, "kind": kind, "change": change, "ratio": ratio,
-            "vol": vol, "price": c, "range": rng, "base": base,
-            "reversal": prev_trend is not None and prev_trend != kind,
-            "prev_trend": prev_trend}
+def true_ranges(h, l, c):
+    tr = []
+    for j in range(len(h)):
+        if j == 0:
+            tr.append(h[j] - l[j])
+        else:
+            tr.append(max(h[j] - l[j], abs(h[j] - c[j - 1]), abs(l[j] - c[j - 1])))
+    return tr
 
 
-# ---------------- 2) EMA KESİŞİMİ ----------------
 def ema_series(vals, n):
     k = 2 / (n + 1)
     e = sum(vals[:n]) / n                               # SMA ile başlat
@@ -216,83 +190,194 @@ def ema_series(vals, n):
     return res
 
 
+# ---------------- Günlük veri, ortalama mum boyu ve FVG'ler ----------------
+def daily(inst):
+    """Kapanmış günlük mumlar (bir çalışma boyunca önbellekte tutulur)."""
+    if inst not in _daily_cache:
+        rows = candles(inst, "1Dutc", 300)
+        ts = [int(r[0]) // 1000 for r in rows]
+        h = [float(r[2]) for r in rows]
+        l = [float(r[3]) for r in rows]
+        c = [float(r[4]) for r in rows]
+        tr = true_ranges(h, l, c)
+        atr = [None] * len(rows)
+        for j in range(ATR_DAYS - 1, len(rows)):
+            atr[j] = sum(tr[j - ATR_DAYS + 1:j + 1]) / ATR_DAYS
+        _daily_cache[inst] = dict(ts=ts, h=h, l=l, c=c, atr=atr, close=[t + 86400 for t in ts])
+        time.sleep(REQUEST_PAUSE)
+    return _daily_cache[inst]
+
+
+def day_at(d, t):
+    """t anında kapanmış son günün indeksi (yoksa -1)."""
+    return bisect.bisect_right(d["close"], t) - 1
+
+
+def daily_zones(d, upto):
+    """Kapanışı 'upto' anına kadar gerçekleşmiş günlerden oluşan günlük FVG'ler (oluşum sırasıyla)."""
+    zones = []
+    last = day_at(d, upto)
+    for f in range(2, last + 1):
+        i = f - 2
+        a = d["atr"][f]
+        if a is None:
+            continue
+        if d["h"][i] < d["l"][f] and d["l"][f] - d["h"][i] >= FVG_MIN_GAP_ATR * a:
+            zones.append(dict(tur=1, alt=d["h"][i], ust=d["l"][f], formed=d["close"][f], f=f, uc=d["h"][f]))
+        elif d["l"][i] > d["h"][f] and d["l"][i] - d["h"][f] >= FVG_MIN_GAP_ATR * a:
+            zones.append(dict(tur=-1, alt=d["h"][f], ust=d["l"][i], formed=d["close"][f], f=f, uc=d["l"][f]))
+    return zones
+
+
+def open_fvgs(d, upto):
+    """Kırılım notları için: 'upto' anında henüz tamamen dolmamış günlük FVG'ler."""
+    by_f = {z["f"]: z for z in daily_zones(d, upto)}
+    acik = []
+    last = day_at(d, upto)
+    for f in range(2, last + 1):
+        # f günü kapanınca önce bu günle tamamen dolanlar çıkar, sonra yeni FVG eklenir
+        acik = [z for z in acik if not ((z["tur"] == 1 and d["l"][f] <= z["alt"]) or
+                                         (z["tur"] == -1 and d["h"][f] >= z["ust"]))]
+        if f in by_f:
+            acik.append(by_f[f])
+            if len(acik) > NOTE_MAX_ZONES:
+                acik.pop(0)
+    return acik
+
+
+# ---------------- 1) YATAY KIRILIM ----------------
+def analyze_breakout(inst, bar, cfg, candle_open):
+    lb, base = cfg["lookback"], cfg["base"]
+    rows = candles(inst, bar, lb + base + 6)
+    if len(rows) < lb + base + 3 or len(rows) < 2 * base + 3:
+        return None
+    L = len(rows) - 1
+    expect_candle(rows[L][0], candle_open)
+
+    o = [float(r[1]) for r in rows]
+    h = [float(r[2]) for r in rows]
+    l = [float(r[3]) for r in rows]
+    c = [float(r[4]) for r in rows]
+    qv = [float(r[7]) for r in rows]
+
+    band = range(L - base, L)
+    hi = max(h[j] for j in band)
+    lo = min(l[j] for j in band)
+    w = hi - lo
+    boy = h[L] - l[L]
+    if lo <= 0 or w <= 0 or boy <= 0 or o[L] <= 0:
+        return None
+
+    # Bant genişliği <= k x (banttan önceki 'lookback' mumun ortalama mum boyu)
+    tr = true_ranges(h, l, c)
+    ort_once = sum(tr[L - base - lb:L - base]) / lb
+    if w > cfg["k"] * ort_once:
+        return None
+
+    up_ok = (c[L] > hi + BRK_CLOSE_OUT * w and c[L] > o[L] and
+             c[L] - o[L] >= BRK_BODY * boy and c[L] - l[L] >= BRK_CLOSE_POS * boy)
+    dn_ok = (c[L] < lo - BRK_CLOSE_OUT * w and c[L] < o[L] and
+             o[L] - c[L] >= BRK_BODY * boy and h[L] - c[L] >= BRK_CLOSE_POS * boy)
+    if up_ok:
+        kind = 1
+    elif dn_ok:
+        kind = -1
+    else:
+        return None
+
+    # Gerçek bant: üst ve alt sınıra en az 2'şer mum yaklaşmış olmalı
+    ust_temas = sum(1 for j in band if h[j] >= hi - BRK_TOUCH_ZONE * w)
+    alt_temas = sum(1 for j in band if l[j] <= lo + BRK_TOUCH_ZONE * w)
+    if ust_temas < BRK_MIN_TOUCH or alt_temas < BRK_MIN_TOUCH:
+        return None
+
+    # Yıldızlar
+    med = statistics.median(qv[L - lb:L])
+    ratio = qv[L] / med if med > 0 else None
+    ort_boy = sum(h[j] - l[j] for j in band) / base
+    stars = int(ratio is not None and ratio >= BRK_STAR_VOL) + int(boy >= BRK_STAR_SIZE * ort_boy)
+
+    close_time = candle_open + cfg["sec"]
+    try:
+        hrows = candles(inst, cfg["htf"], 100)
+        hcl = [float(r[4]) for r in hrows if int(r[0]) // 1000 + cfg["htf_sec"] <= close_time]
+        if len(hcl) >= 21:
+            e = ema_series(hcl, 21)[-1]
+            stars += int((kind == 1 and c[L] > e) or (kind == -1 and c[L] < e))
+        time.sleep(REQUEST_PAUSE)
+    except Exception as ex:
+        print(f"{inst} üst zaman dilimi EMA alınamadı: {ex}")
+
+    # Önceki trend (dönüş mü devam mı)
+    rng = (hi / lo - 1) * 100
+    rev = False
+    if c[L - 2 * base] > 0:
+        pt = (c[L - base] / c[L - 2 * base] - 1) * 100
+        if abs(pt) >= rng:
+            rev = (1 if pt > 0 else -1) != kind
+
+    # Günlük FVG notları
+    iyi = uyari = None
+    try:
+        d = daily(inst)
+        cc = c[L]
+        best_i = best_u = None
+        for z in open_fvgs(d, close_time):
+            dist = abs((z["alt"] + z["ust"]) / 2 - cc)
+            if z["tur"] == kind and z["alt"] <= hi and z["ust"] >= lo:
+                if best_i is None or dist < best_i:
+                    best_i, iyi = dist, z
+            if kind == 1:
+                ters = z["tur"] == -1 and ((z["alt"] <= cc <= z["ust"]) or
+                                           (z["alt"] > cc and (z["alt"] / cc - 1) * 100 <= NOTE_NEAR_PCT))
+            else:
+                ters = z["tur"] == 1 and ((z["alt"] <= cc <= z["ust"]) or
+                                          (z["ust"] < cc and (1 - z["ust"] / cc) * 100 <= NOTE_NEAR_PCT))
+            if ters and (best_u is None or dist < best_u):
+                best_u, uyari = dist, z
+    except Exception as ex:
+        print(f"{inst} günlük FVG notu alınamadı: {ex}")
+
+    return {"inst": inst, "kind": kind, "change": (c[L] / o[L] - 1) * 100, "ratio": ratio,
+            "vol": qv[L], "price": c[L], "range": rng, "base": base, "stars": stars,
+            "reversal": rev, "iyi": iyi, "uyari": uyari}
+
+
+# ---------------- 2) EMA KESİŞİMİ ----------------
 def analyze_ema(inst, cfg, candle_open):
     rows = fetch_closed(inst, cfg["bar"], cfg["bars"])
     n = cfg["period"]
-    if len(rows) < n + 2:                               # yeterli geçmişi olmayan coin
+    if len(rows) < n + 2:
         return None
     last = rows[-1]
     expect_candle(last[0], candle_open)
 
     closes = [float(r[4]) for r in rows]
     e = ema_series(closes, n)[-1]
-    o, h, l, c = float(last[1]), float(last[2]), float(last[3]), float(last[4])
+    o, c = float(last[1]), float(last[4])
+    if (o - e) * (c - e) >= 0:                          # sadece gövde kesişimi
+        return None
+    kind = "UP" if c > e else "DOWN"
+    return {"inst": inst, "kind": kind, "price": c, "ema": e, "dist": (c / e - 1) * 100}
 
-    # Sadece gövde kesişimi: açılış EMA'nın bir tarafında, kapanış diğer tarafında.
-    # (Fitil dokunuşu sayılmaz.)
-    if (o - e) * (c - e) >= 0:
+
+# ---------------- 3) FVG'DEN DÖNÜŞ (bölge günlük, tepki 4H) ----------------
+def analyze_fvg(inst, candle_open):
+    d = daily(inst)
+    if len(d["ts"]) < ATR_DAYS + 3:
+        return None
+    last_t = candle_open + FVG_SEC                       # taranan 4H mumun kapanışı
+    dc_now = d["c"][day_at(d, last_t)]
+    zones = [z for z in daily_zones(d, last_t)
+             if (last_t - z["formed"]) / 86400 <= FVG_MAX_AGE_DAYS + 1
+             and ((z["tur"] == 1 and dc_now <= z["ust"] * (1 + FVG_NEAR_PCT / 100)) or
+                  (z["tur"] == -1 and dc_now >= z["alt"] * (1 - FVG_NEAR_PCT / 100)))]
+    if not zones:                                       # yakında uygun bölge yok: 4H çekmeye gerek yok
         return None
 
-    kind = "UP" if c > e else "DOWN"                    # yukarı kesip kapattı / aşağı kesip kapattı
-    return {"inst": inst, "kind": kind, "price": c, "ema": e,
-            "dist": (c / e - 1) * 100}
-
-
-# ---------------- 3) FVG TEPKİSİ (bölge günlük, tepki 4H) ----------------
-def analyze_fvg(inst, cfg, candle_open):
-    """
-    1) Günlük mumlardan FVG bölgeleri bulunur:
-         Yükseliş FVG : gün[i].high < gün[i+2].low   -> bölge [gün[i].high, gün[i+2].low]  (destek)
-         Düşüş FVG    : gün[i].low  > gün[i+2].high  -> bölge [gün[i+2].high, gün[i].low]  (direnç)
-       Bölge, FVG'yi tamamlayan günün kapanışından itibaren geçerlidir.
-    2) Tepki, az önce kapanan 4H mumla ölçülür:
-         destek : 4H mum bölgeye girdi (low <= üst sınır) ve kapanış bölgenin ÜSTÜNDE
-         direnç : 4H mum bölgeye girdi (high >= alt sınır) ve kapanış bölgenin ALTINDA
-       Oluşumdan bu yana hiçbir 4H mum bölgeye girmemiş olmalı (ilk test) ve hiçbir 4H mum
-       bölgeyi tersine kapanışla bozmamış olmalı.
-    """
-    zsec = cfg["zone_sec"]
-    d = api("/api/v5/market/candles",
-            {"instId": inst, "bar": cfg["zone_bar"], "limit": str(cfg["zone_lookback"] + 2)})
-    drows = [r for r in reversed(d) if r[8] == "1"]
-    if len(drows) < 10:
-        return None
-    dts = [int(r[0]) // 1000 for r in drows]
-    dhi = [float(r[2]) for r in drows]
-    dlo = [float(r[3]) for r in drows]
-    dcl = [float(r[4]) for r in drows]
-
-    # ---- günlük FVG bölgeleri ----
-    zones = []
-    for i in range(len(drows) - 2):
-        f = i + 2
-        formed = dts[f] + zsec                          # bölge, f gününün kapanışında oluşur
-        age_days = (candle_open - formed) / 86400
-        if age_days < 0 or age_days > cfg["max_age_days"]:
-            continue
-        if dhi[i] < dlo[f]:
-            bot, top, kind = dhi[i], dlo[f], "SUPPORT"
-            swing0 = dhi[f]
-        elif dlo[i] > dhi[f]:
-            bot, top, kind = dhi[f], dlo[i], "RESIST"
-            swing0 = dlo[f]
-        else:
-            continue
-        if bot <= 0 or (top / bot - 1) * 100 < cfg["min_gap"]:
-            continue
-        near = cfg["near_pct"] / 100                    # fiyat bölgeden çok uzaktaysa 4H çekme
-        if kind == "SUPPORT" and dcl[-1] > top * (1 + near):
-            continue
-        if kind == "RESIST" and dcl[-1] < bot * (1 - near):
-            continue
-        zones.append((kind, bot, top, formed, age_days, swing0))
-    if not zones:
-        return None
-
-    # ---- 4H mumlar ----
-    r4 = api("/api/v5/market/candles",
-             {"instId": inst, "bar": cfg["react_bar"], "limit": str(cfg["react_limit"])})
-    rows = [r for r in reversed(r4) if r[8] == "1"]
+    first = min(z["formed"] for z in zones)
+    need = int((candle_open - first) / FVG_SEC) + 35
+    rows = candles_more(inst, "4H", need)
     if len(rows) < 40:
         return None
     expect_candle(rows[-1][0], candle_open)
@@ -301,57 +386,77 @@ def analyze_fvg(inst, cfg, candle_open):
     hi = [float(r[2]) for r in rows]
     lo = [float(r[3]) for r in rows]
     cl = [float(r[4]) for r in rows]
-    vo = [float(r[7]) for r in rows]
-
+    qv = [float(r[7]) for r in rows]
     L = len(rows) - 1
-    o, h, l, c = op[L], hi[L], lo[L], cl[L]
-    rng = h - l
-    if rng <= 0:
-        return None
-    med_vol = statistics.median(vo[-31:-1])
-    vol_ratio = vo[L] / med_vol if med_vol > 0 else 0.0
 
+    # Sadece 4H verisinin kapsadığı bölgeler, oluşumdan itibaren mum mum izlenir (göstergeyle aynı)
+    for z in zones:
+        z.update(tem=0, po=None, pl=None, ph=None, pv=0.0, dead=False)
+    zones = [z for z in zones if z["formed"] >= t4[0]]
     best = None
-    for kind, bot, top, formed, age_days, swing0 in zones:
-        if t4[L] < formed:
-            continue
-        prev = [j for j in range(L) if t4[j] >= formed]  # oluşum ile sinyal mumu arası 4H mumlar
+    for k in range(L + 1):
+        ct = t4[k] + FVG_SEC
+        di = day_at(d, ct)
+        datr = d["atr"][di] if di >= 0 else None
+        dc1 = d["c"][di] if di >= 0 else None
+        med = statistics.median(qv[k - 30:k]) if k >= 30 else 0
+        vr = qv[k] / med if med > 0 else 0.0
+        for z in zones:
+            if z["dead"] or t4[k] < z["formed"]:
+                continue
+            tur, alt, ust = z["tur"], z["alt"], z["ust"]
+            yas = (t4[k] - z["formed"]) / 86400
+            pay = FVG_NEAR_TOUCH * datr if datr else 0.0
+            temas = lo[k] <= ust + pay if tur == 1 else hi[k] >= alt - pay
+            if z["tem"] == 0 and temas and yas <= FVG_MAX_AGE_DAYS:
+                z.update(tem=1, po=op[k], pl=lo[k], ph=hi[k], pv=vr)
+            elif z["tem"] > 0:
+                z.update(tem=z["tem"] + 1, pl=min(z["pl"], lo[k]), ph=max(z["ph"], hi[k]), pv=max(z["pv"], vr))
 
-        if kind == "SUPPORT":
-            if sum(1 for j in prev if lo[j] <= top) > cfg["max_prev_touches"]:
-                continue
-            if any(cl[j] < bot for j in prev):          # bölge aşağı kapanışla bozulmuş
-                continue
-            if not (l <= top and c > top):
-                continue
-            move = (max([swing0] + [hi[j] for j in prev]) / top - 1) * 100
-            if move < cfg["min_move"]:
-                continue
-            wick = (min(o, c) - l) / rng
-            score = int(wick >= cfg["wick"]) + int(c > o) + int(vol_ratio >= cfg["vol_ratio"])
-        else:
-            if sum(1 for j in prev if hi[j] >= bot) > cfg["max_prev_touches"]:
-                continue
-            if any(cl[j] > top for j in prev):          # bölge yukarı kapanışla bozulmuş
-                continue
-            if not (h >= bot and c < bot):
-                continue
-            move = (bot / min([swing0] + [lo[j] for j in prev]) - 1) * 100
-            if move < cfg["min_move"]:
-                continue
-            wick = (h - max(o, c)) / rng
-            score = int(wick >= cfg["wick"]) + int(c < o) + int(vol_ratio >= cfg["vol_ratio"])
-
-        if score < cfg["min_score"]:
-            continue
-        if best is None or (score, formed) > (best["score"], best["_formed"]):
-            best = dict(kind=kind, bot=bot, top=top, age=int(age_days), wick=wick,
-                        move=move, score=score, _formed=formed)
+            if z["tem"] > 0:
+                crng = z["ph"] - z["pl"]
+                bozuldu = cl[k] < alt if tur == 1 else cl[k] > ust
+                cikti = cl[k] > ust if tur == 1 else cl[k] < alt
+                if bozuldu:
+                    z["dead"] = True
+                elif cikti:
+                    z["dead"] = True
+                    if k != L:
+                        continue
+                    yakin = dc1 is not None and (dc1 <= ust * (1 + FVG_NEAR_PCT / 100) if tur == 1
+                                                 else dc1 >= alt * (1 - FVG_NEAR_PCT / 100))
+                    if crng <= 0 or not yakin or not datr:
+                        continue
+                    if tur == 1:
+                        fit = (min(z["po"], cl[k]) - z["pl"]) / crng
+                        yon = cl[k] > z["po"]
+                        geri = z["uc"] - ust
+                        har = (z["uc"] / ust - 1) * 100
+                        mes = (z["pl"] / ust - 1) * 100 if z["pl"] > ust else None
+                    else:
+                        fit = (z["ph"] - max(z["po"], cl[k])) / crng
+                        yon = cl[k] < z["po"]
+                        geri = alt - z["uc"]
+                        har = (alt / z["uc"] - 1) * 100
+                        mes = (1 - z["ph"] / alt) * 100 if z["ph"] < alt else None
+                    score = int(fit >= FVG_WICK) + int(yon) + int(z["pv"] >= FVG_VOL)
+                    if geri < FVG_MIN_PULLBACK * datr or score < FVG_MIN_SCORE:
+                        continue
+                    if best is None or (score, z["formed"]) > (best["score"], best["_formed"]):
+                        best = dict(kind="SUPPORT" if tur == 1 else "RESIST", bot=alt, top=ust,
+                                    age=int(yas), wick=fit, vol_ratio=z["pv"], move=har, score=score,
+                                    mum=z["tem"], mesafe=mes, _formed=z["formed"])
+                elif z["tem"] >= FVG_WINDOW:
+                    z["dead"] = True
+            else:
+                z["uc"] = max(z["uc"], hi[k]) if tur == 1 else min(z["uc"], lo[k])
+                if yas > FVG_MAX_AGE_DAYS:
+                    z["dead"] = True
 
     if not best:
         return None
     best.pop("_formed")
-    best.update(inst=inst, price=c, vol_ratio=vol_ratio)
+    best.update(inst=inst, price=cl[L])
     return best
 
 
@@ -361,7 +466,8 @@ def send(msg):
     print(msg + "\n", flush=True)
     token, chat = os.getenv("TG_TOKEN"), os.getenv("TG_CHAT_ID")
     if not (token and chat):
-        return True
+        print("UYARI: TG_TOKEN veya TG_CHAT_ID tanımlı değil, Telegram'a mesaj gönderilmedi!")
+        return False
 
     chunks, cur = [], ""
     for line in msg.split("\n"):
@@ -414,16 +520,24 @@ def save_state(state):
 # ---------------- Mesaj biçimleri ----------------
 def msg_breakout(bar, hits):
     label = bar.replace("utc", "")
-    # Önce dönüşler, sonra hacim oranı
-    hits.sort(key=lambda x: (x["reversal"], x["ratio"]), reverse=True)
+    hits.sort(key=lambda x: (x["stars"], x["reversal"], x["ratio"] or 0), reverse=True)
     lines = [f"📦➡️🚀 [{label}] Yatay kırılım: {len(hits)} coin"]
     for r in hits[:MAX_ALERTS_PER_SCAN]:
-        kind = "🟢 YUKARI" if r["kind"] == "UP" else "🔴 AŞAĞI"
+        up = r["kind"] == 1
+        kind = "🟢 YUKARI" if up else "🔴 AŞAĞI"
+        stars = " " + "⭐" * r["stars"] if r["stars"] else ""
         tag = " 🔄dönüş" if r["reversal"] else ""
+        hacim = f"hacim {r['ratio']:.1f}x ({fmt_usdt(r['vol'])})" if r["ratio"] else f"hacim {fmt_usdt(r['vol'])}"
         lines.append(
-            f"{kind} {short(r['inst'])}{tag}  {r['change']:+.1f}%  |  hacim {r['ratio']:.1f}x "
-            f"({fmt_usdt(r['vol'])})  |  yatay {r['base']} mum, %{r['range']:.1f} aralık  |  {r['price']}"
+            f"{kind} {short(r['inst'])}{stars}{tag}  {r['change']:+.1f}%  |  {hacim}  |  "
+            f"bant {r['base']} mum, %{r['range']:.1f}  |  {r['price']}"
         )
+        if r["iyi"]:
+            z = r["iyi"]
+            lines.append(f"    ✅ {'destek' if up else 'direnç'} FVG'sinden kırılım ({z['alt']:.6g}–{z['ust']:.6g})")
+        if r["uyari"]:
+            z = r["uyari"]
+            lines.append(f"    ⚠️ günlük {'direnç' if up else 'destek'} FVG'sine doğru ({z['alt']:.6g}–{z['ust']:.6g})")
     if len(hits) > MAX_ALERTS_PER_SCAN:
         lines.append(f"... ve {len(hits) - MAX_ALERTS_PER_SCAN} coin daha")
     return "\n".join(lines)
@@ -450,27 +564,25 @@ def msg_ema(name, cfg, hits):
     return "\n".join(lines)
 
 
-def msg_fvg(bar, hits):
-    label = bar.replace("utc", "")
+def msg_fvg(hits):
     sup = [h for h in hits if h["kind"] == "SUPPORT"]
     res = [h for h in hits if h["kind"] == "RESIST"]
-    lines = [f"🧲 FVG tepkisi (günlük bölge, 4H tepki): {len(hits)} coin"]
+    lines = [f"🧲 FVG'den dönüş (günlük bölge, 4H tepki): {len(hits)} coin"]
+
+    def row(h, alt_ust, hareket):
+        yakin = f" (yakın temas %{h['mesafe']:.2f})" if h["mesafe"] is not None else ""
+        return (f"  {short(h['inst'])} {'⭐' * h['score']}{yakin}  FVG {h['bot']:.6g}–{h['top']:.6g} "
+                f"({h['age']} gün önce)  |  4H kapanış {h['price']}  |  girişten sonraki {h['mum']}. mum  |  "
+                f"{alt_ust} fitil %{h['wick'] * 100:.0f}  |  hacim {h['vol_ratio']:.1f}x  |  {hareket} %{h['move']:.1f}")
+
     if sup:
-        lines.append("🟢 DESTEK tepkisi (yükseliş FVG'sinden dönüş ihtimali):")
+        lines.append("🔵 YUKARI dönüş (günlük destek FVG'si):")
         for h in sorted(sup, key=lambda x: (x["score"], -x["age"]), reverse=True):
-            lines.append(
-                f"  {short(h['inst'])} {'⭐' * h['score']}  FVG {h['bot']:.6g}–{h['top']:.6g} "
-                f"({h['age']} gün önce)  |  4H kapanış {h['price']}  |  alt fitil %{h['wick'] * 100:.0f}  |  "
-                f"hacim {h['vol_ratio']:.1f}x  |  zirveden geri çekilme %{h['move']:.0f}"
-            )
+            lines.append(row(h, "alt", "zirveden geri çekilme"))
     if res:
-        lines.append("🔴 DİRENÇ reddi (düşüş FVG'sinden aşağı dönüş ihtimali):")
+        lines.append("🟠 AŞAĞI dönüş (günlük direnç FVG'si):")
         for h in sorted(res, key=lambda x: (x["score"], -x["age"]), reverse=True):
-            lines.append(
-                f"  {short(h['inst'])} {'⭐' * h['score']}  FVG {h['bot']:.6g}–{h['top']:.6g} "
-                f"({h['age']} gün önce)  |  4H kapanış {h['price']}  |  üst fitil %{h['wick'] * 100:.0f}  |  "
-                f"hacim {h['vol_ratio']:.1f}x  |  dipten yükseliş %{h['move']:.0f}"
-            )
+            lines.append(row(h, "üst", "dipten yükseliş"))
     return "\n".join(lines)
 
 
@@ -482,21 +594,15 @@ def last_closed_open(now, sec, off=0):
 def main():
     state = load_state()
     now = int(time.time())
-    # Elle test: sadece "Run workflow" ile ve test kutusu işaretliyse. Dışarıdan (API ile) tetiklemede
-    # workflow dosyası TEST_RUN=false gönderir, bot normal çalışır. TEST_RUN tanımlı değilse eski davranış.
     manual = (os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
               and os.getenv("TEST_RUN", "true").lower() != "false")
 
     tasks = []   # (state_key, tür, ad, cfg, mum açılışı)
     for bar, cfg in BREAKOUT.items():
-        co = last_closed_open(now, cfg["sec"])
-        tasks.append((f"BRK_{bar}", "brk", bar, cfg, co))
+        tasks.append((f"BRK_{bar}", "brk", bar, cfg, last_closed_open(now, cfg["sec"])))
     for name, cfg in EMA_TASKS.items():
-        co = last_closed_open(now, cfg["sec"], cfg["off"])
-        tasks.append((name, "ema", name, cfg, co))
-    for bar, cfg in FVG.items():
-        co = last_closed_open(now, cfg["sec"])
-        tasks.append((f"FVG_{bar}", "fvg", bar, cfg, co))
+        tasks.append((name, "ema", name, cfg, last_closed_open(now, cfg["sec"], cfg["off"])))
+    tasks.append(("FVG_1Dutc>4H", "fvg", "1Dutc>4H", {"sec": FVG_SEC}, last_closed_open(now, FVG_SEC)))
 
     due = [t for t in tasks if state.get(t[0]) != t[4]]
 
@@ -510,7 +616,7 @@ def main():
     print(f"{len(symbols)} sembol, taranacak: {[t[0] for t in due]}")
 
     for key, kind, name, cfg, candle_open in due:
-        late = now - (candle_open + cfg["sec"])             # mum kaç saniye önce kapandı
+        late = now - (candle_open + cfg["sec"])
         limit = LATE_LIMIT.get(cfg["sec"], cfg["sec"] * 3)
         if not manual and key not in state and late > limit:
             print(f"{key}: ilk kez görülen görev, mum {late // 60} dk önce kapanmış "
@@ -530,7 +636,7 @@ def main():
                 if kind == "brk":
                     r = analyze_breakout(inst, name, cfg, candle_open)
                 elif kind == "fvg":
-                    r = analyze_fvg(inst, cfg, candle_open)
+                    r = analyze_fvg(inst, candle_open)
                 else:
                     r = analyze_ema(inst, cfg, candle_open)
             except StaleCandle:
@@ -544,7 +650,7 @@ def main():
             if r:
                 hits.append(r)
 
-        if stale > len(symbols) * 0.3:                      # OKX mumu henüz onaylamamış: kaydetme, tekrar dene
+        if stale > len(symbols) * 0.3:
             print(f"{key}: OKX mumu henüz onaylamamış ({stale}/{len(symbols)}), sonraki çalışmada tekrar denenecek.")
             continue
 
@@ -554,14 +660,14 @@ def main():
             if kind == "brk":
                 text = msg_breakout(name, hits)
             elif kind == "fvg":
-                text = msg_fvg(name, hits)
+                text = msg_fvg(hits)
             else:
                 text = msg_ema(name, cfg, hits)
-            head, _, rest = text.partition("\n")             # 2. satıra mum tarih/saat bilgisi ekle
+            head, _, rest = text.partition("\n")
             text = head + "\n" + candle_stamp(candle_open, cfg["sec"], late) + ("\n" + rest if rest else "")
             sent_ok = send(text)
 
-        if sent_ok:                                      # mesaj gitmediyse bir sonraki çalışmada tekrar denenir
+        if sent_ok:
             state[key] = candle_open
             save_state(state)
 
