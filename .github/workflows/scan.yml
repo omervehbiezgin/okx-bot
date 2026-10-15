@@ -2,13 +2,17 @@ name: OKX Hacim Tarayici
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7 * * * *"          # Yedek: zincir koparsa saatte bir yeniden başlatır
   workflow_dispatch:
     inputs:
       test:
-        description: "Test mesajı gönder ve eski mumları da tara"
+        description: "Test mesajı gönder"
         type: boolean
         default: false
+
+permissions:
+  contents: read
+  actions: write                 # Bir sonraki turu kendisi başlatabilmesi için
 
 concurrency:
   group: okx-scan
@@ -17,7 +21,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
 
@@ -34,12 +38,26 @@ jobs:
 
       - run: pip install requests
 
-      - name: Taramayi calistir
-        run: python okx_scan_once.py
+      - name: Taramayi 15 dakikada bir calistir (yaklasik 5 saat 40 dk)
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           TEST_RUN: ${{ inputs.test }}
+        run: |
+          BASLA=$(date +%s)
+          SURE=20400
+          while true; do
+            python okx_scan_once.py || echo "Tarama hatayla bitti, döngü devam ediyor."
+            export TEST_RUN=false          # Test mesajı sadece ilk turda gitsin
+            SIMDI=$(date +%s)
+            if [ $((SIMDI - BASLA)) -ge $SURE ]; then
+              echo "Süre doldu, bu tur bitiyor."
+              break
+            fi
+            BEKLE=$(( 900 - SIMDI % 900 + 20 ))   # Bir sonraki 15 dk mum kapanışı + 20 sn
+            echo "Sonraki tarama $BEKLE saniye sonra."
+            sleep $BEKLE
+          done
 
       - name: Durumu kaydet
         if: always()
@@ -47,3 +65,9 @@ jobs:
         with:
           path: state.json
           key: state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Bir sonraki turu baslat
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run scan.yml --ref ${{ github.ref_name }} -f test=false
