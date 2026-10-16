@@ -22,8 +22,7 @@ Strateji (sadece kripto USDT perpetual):
 Ortam değişkenleri:
   TG_TOKEN, TG_CHAT_ID : Telegram (mevcut botla aynı)
   TEST_RUN             : "true" ise elle çalıştırmada test mesajı gönderir
-  PA_BACKTEST          : gün sayısı verilirse geçmişe dönük test yapar; MESAJ GÖNDERMEZ,
-                         durum dosyasına yazmaz.
+  Geçmişe dönük test için pa_backtest.py kullanılır (mesaj göndermez).
 """
 import os
 import sys
@@ -61,7 +60,7 @@ RISK_PCT = 1.0             # mesajdaki pozisyon büyüklüğü önerisi için i�
 REQUEST_PAUSE = 0.1
 # -----------------------------------------
 
-TF = {"30m": ("30m", 1800), "1H": ("1H", 3600), "4H": ("4H", 14400), "1D": ("1Dutc", 86400)}
+TF = {"15m": ("15m", 900), "30m": ("30m", 1800), "1H": ("1H", 3600), "4H": ("4H", 14400), "1D": ("1Dutc", 86400)}
 # Yapı zaman dilimine göre ayarlar (mum sayısı olarak):
 #   k: tepe/dip onayı, look: bakılan mum, top_age: kırılan yapı en fazla kaç mum önce, retest: kırılımdan sonra bekleme
 STRUCT = {
@@ -178,15 +177,21 @@ def pivots(h, l, a, b, k):
     return ph, pl
 
 
-def setups_at(d, D, datr):
-    """D mumuna kadar (D dahil) kapanmış yapı verisiyle aktif kurulumlar."""
+def setups_at(d, D, datr, piv=None):
+    """D mumuna kadar (D dahil) kapanmış yapı verisiyle aktif kurulumlar.
+    piv: tüm seri için önceden hesaplanmış pivots(h, l, 0, len-1, k) (geçmiş testte hız için)."""
     cfg = STRUCT[STRUCT_TF]
     if D < 40 or datr[D] is None:
         return [], [], []
     h, l, c, t = d["h"], d["l"], d["c"], d["t"]
     a = datr[D]
     start = max(0, D - cfg["look"])
-    ph, pl = pivots(h, l, start, D, cfg["k"])
+    if piv is None:
+        ph, pl = pivots(h, l, start, D, cfg["k"])
+    else:
+        lo_i, hi_i = start + cfg["k"], D - cfg["k"]
+        ph = [p for p in piv[0] if lo_i <= p[0] <= hi_i]
+        pl = [p for p in piv[1] if lo_i <= p[0] <= hi_i]
     out = []
 
     # SHORT: yükselen yapıda son tepeyi oluşturan dip kapanışla kırıldı
@@ -440,128 +445,9 @@ def live():
         save_state(state)
 
 
-# ---------------- Geçmişe dönük test (mesaj göndermez) ----------------
-def simulate(g, s1h):
-    """Küçük zaman dilimi mumlarıyla: TP1'de yarısı kapanır ve stop girişe çekilir. Sonuç R cinsinden."""
-    d, e, sl, tp1, tp2 = g["dir"], g["entry"], g["sl"], g["tp1"], g["tp2"]
-    R = abs(e - sl)
-    half = False
-    start = bisect.bisect_left(s1h["t"], g["t"])
-    for j in range(start, len(s1h["t"])):
-        adv = s1h["l"][j] if d == 1 else s1h["h"][j]
-        fav = s1h["h"][j] if d == 1 else s1h["l"][j]
-        if not half:
-            if (adv - sl) * d <= 0:
-                return -1.0, "stop"
-            if (fav - tp1) * d >= 0:
-                half = True
-                if (fav - tp2) * d >= 0:
-                    return 0.5 + 0.5 * g["rr2"], "TP2"
-        else:
-            if (adv - e) * d <= 0:
-                return 0.5, "TP1 + başabaş"
-            if (fav - tp2) * d >= 0:
-                return 0.5 + 0.5 * g["rr2"], "TP2"
-    acik = (s1h["c"][-1] - e) * d / R if s1h["c"] else 0
-    return (0.5 + 0.5 * acik if half else acik), "açık"
-
-
-def run_bt(data, tf, t_from):
-    sigs = []
-    for inst, (d1, s30) in data.items():
-        d = d1 if STRUCT_TF == "1D" else aggregate(s30, TF[STRUCT_TF][1])
-        datr = atr_arr(d)
-        if tf == STRUCT_TF:
-            x = d
-        elif tf == "1D":
-            x = d1
-        elif tf == "30m":
-            x = s30
-        else:
-            x = aggregate(s30, TF[tf][1])
-        xatr = atr_arr(x)
-        used, cache = set(), {}
-        for j in range(len(x["t"])):
-            if x["t"][j] < t_from:
-                continue
-            D = last_day_before(d, x["t"][j])
-            if D not in cache:
-                cache[D] = setups_at(d, D, datr)
-            sts, highs, lows = cache[D]
-            for st in sts:
-                if st["key"] in used:
-                    continue
-                g = check_reject(x, j, xatr, st, highs, lows)
-                if g:
-                    used.add(st["key"])
-                    g["inst"] = inst
-                    g["R"], g["sonuc"] = simulate(g, s30)
-                    sigs.append(g)
-    sigs.sort(key=lambda g: g["t"])
-    return sigs
-
-
-def ozet(sigs):
-    kapali = [g for g in sigs if g["sonuc"] != "açık"]
-    stop = sum(1 for g in kapali if g["sonuc"] == "stop")
-    toplam = sum(g["R"] for g in sigs)
-    oran = (len(kapali) - stop) / len(kapali) * 100 if kapali else 0
-    ort_stop = sum(g["stop_pct"] for g in sigs) / len(sigs) if sigs else 0
-    return (f"{len(sigs)} sinyal (L{sum(1 for g in sigs if g['dir'] == 1)}/S{sum(1 for g in sigs if g['dir'] == -1)}), "
-            f"TP1+ oranı %{oran:.0f}, toplam {toplam:+.1f}R, sinyal başı "
-            f"{toplam / len(sigs) if sigs else 0:+.2f}R, ort. stop %{ort_stop:.1f}")
-
-
-BT_VARIANTS = [
-    ("yapı 1D → red 1H (mevcut)", "1D", "1H", {}),
-    ("yapı 1D → red 30m", "1D", "30m", {}),
-    ("yapı 4H → red 1H", "4H", "1H", {}),
-    ("yapı 4H → red 30m", "4H", "30m", {}),
-    ("yapı 4H → red 1H, temas 0.25", "4H", "1H", dict(TOUCH_TOL=0.25)),
-    ("yapı 4H → red 30m, temas 0.25", "4H", "30m", dict(TOUCH_TOL=0.25)),
-]
-
-
-def backtest(days):
-    days = max(7, min(days, 150))
-    now = int(time.time())
-    t_from = now - days * DAY
-    symbols = get_symbols()
-    print(f"Geçmiş test: son {days} gün, {len(symbols)} sembol. (Mesaj gönderilmez.)", flush=True)
-    data = {}
-    for inst in symbols:
-        try:
-            data[inst] = (fetch(inst, "1Dutc", DAY, days + STRUCT_DAYS + 20),
-                          fetch(inst, "30m", 1800, (days + 35) * 48))
-        except Exception as e:
-            print(f"{inst} hata: {e}")
-        time.sleep(REQUEST_PAUSE)
-    print(f"Veri alındı: {len(data)} coin.", flush=True)
-
-    keys = ("MIN_AWAY", "WICK_MIN", "MAX_PIERCE", "MIN_RR", "TOUCH_TOL", "STRUCT_TF")
-    g0 = {k: globals()[k] for k in keys}
-    for ad, stf, tf, ayar in BT_VARIANTS:
-        globals().update(g0)
-        globals().update(ayar)
-        globals()["STRUCT_TF"] = stf
-        sigs = run_bt(data, tf, t_from)
-        print(f"\n===== {ad} =====")
-        for g in sigs:
-            ts = datetime.fromtimestamp(g["t"], TR)
-            print(f"{ts:%d.%m.%y %H:%M}  {'LONG ' if g['dir'] == 1 else 'SHORT'} {short(g['inst']):<10} "
-                  f"seviye {fp(g['level']):<10} stop %{g['stop_pct']:.2f}  TP2 {g['rr2']:.1f}R  "
-                  f"-> {g['sonuc']:<14} {g['R']:+.2f}R")
-        print(f"::notice::[{days} gün, {len(data)} coin] {ad}: {ozet(sigs)}")
-    globals().update(g0)
-
-
 if __name__ == "__main__":
     try:
-        bt = os.getenv("PA_BACKTEST", "").strip()
-        if bt:
-            backtest(int(bt))
-        else:
-            live()
+        live()
     except Exception as e:
         print("HATA:", e)
         sys.exit(1)
