@@ -38,7 +38,7 @@ BASE = "https://www.okx.com"
 STATE_FILE = "pa_state.json"          # mevcut botun state.json dosyasından ayrı
 
 # ---------------- AYARLAR ----------------
-REJECT_TF = "4H"           # red mumunun zaman dilimi: "1H", "4H" veya "1D"
+REJECT_TF = "1H"           # red mumunun zaman dilimi: "1H", "4H" veya "1D"
 MIN_24H_USDT = 5_000_000   # 24s hacmi bunun altındaki coinler taranmaz
 MAX_SYMBOLS = 80           # hacme göre en fazla kaç coin taransın
 DAILY_K = 3                # günlük tepe/dip: sağında ve solunda en az kaç gün daha düşük/yüksek
@@ -497,6 +497,17 @@ def ozet(sigs):
             f"{toplam / len(sigs) if sigs else 0:+.2f}R, ort. stop %{ort_stop:.1f}")
 
 
+BT_VARIANTS = [
+    ("red 1H (temel)", "1H", {}),
+    ("red 1H, uzaklaşma 1.0", "1H", dict(MIN_AWAY=1.0)),
+    ("red 1H, fitil en az %50", "1H", dict(WICK_MIN=0.5)),
+    ("red 1H, seviyeyi en fazla 0.25 aşma", "1H", dict(MAX_PIERCE=0.25)),
+    ("red 1H, TP2 en az 2.5R", "1H", dict(MIN_RR=2.5)),
+    ("red 1H, dar temas toleransı 0.15", "1H", dict(TOUCH_TOL=0.15)),
+    ("red 4H (temel)", "4H", {}),
+]
+
+
 def backtest(days):
     days = max(7, min(days, 150))
     now = int(time.time())
@@ -512,15 +523,20 @@ def backtest(days):
             print(f"{inst} hata: {e}")
         time.sleep(REQUEST_PAUSE)
 
-    for tf in ("1H", "4H", "1D"):
+    keys = ("MIN_AWAY", "WICK_MIN", "MAX_PIERCE", "MIN_RR", "TOUCH_TOL")
+    g0 = {k: globals()[k] for k in keys}
+    for ad, tf, ayar in BT_VARIANTS:
+        globals().update(g0)
+        globals().update(ayar)
         sigs = run_bt(data, tf, t_from)
-        print(f"\n===== red {tf} =====")
+        print(f"\n===== {ad} =====")
         for g in sigs:
             ts = datetime.fromtimestamp(g["t"], TR)
             print(f"{ts:%d.%m.%y %H:%M}  {'LONG ' if g['dir'] == 1 else 'SHORT'} {short(g['inst']):<10} "
                   f"seviye {fp(g['level']):<10} stop %{g['stop_pct']:.2f}  TP2 {g['rr2']:.1f}R  "
                   f"-> {g['sonuc']:<14} {g['R']:+.2f}R")
-        print(f"::notice::[{days} gün, {len(data)} coin] red {tf}: {ozet(sigs)}")
+        print(f"::notice::[{days} gün, {len(data)} coin] {ad}: {ozet(sigs)}")
+    globals().update(g0)
 
 
 if __name__ == "__main__":
