@@ -56,29 +56,37 @@ def fetch_retry(inst, bar, sec, n):
 
 
 def load_data(days):
+    """Önbellekteki coinleri kullanır, eksik coinleri tamamlar (önbellek 2 günden eskiyse baştan çeker)."""
+    data, created = {}, time.time()
     try:
         with gzip.open(CACHE, "rt") as f:
             c = json.load(f)
-        if c.get("days") == days and time.time() - c["created"] < 2 * 86400 and c["data"]:
-            print(f"Önbellekteki veri kullanılıyor ({len(c['data'])} coin).", flush=True)
-            return c["data"], c["created"]
+        if c.get("days") == days and time.time() - c["created"] < 2 * 86400:
+            data, created = c["data"], c["created"]
+            print(f"Önbellekte {len(data)} coin var.", flush=True)
     except Exception:
         pass
-    symbols = p.get_symbols()
+    symbols = [s for s in p.get_symbols() if s not in data]
     n = (days + WARMUP_DAYS) * 96
+    if not symbols:
+        return data, created
     print(f"{len(symbols)} coin için 15m veri çekiliyor ({n} mum)...", flush=True)
 
     def one(inst):
         s = fetch_retry(inst, "15m", 900, n)
-        time.sleep(0.2)
+        time.sleep(0.5)
         return inst, s
 
-    data = {}
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    kisa = 0
+    with ThreadPoolExecutor(max_workers=2) as ex:
         for inst, s in ex.map(one, symbols):
             if s and len(s["t"]) > 96 * (WARMUP_DAYS + 7):
-                data[inst] = s
-    created = time.time()
+                # Önbellekteki diğer coinlerle aynı zaman aralığına kırp
+                j = bisect.bisect_right(s["t"], created)
+                data[inst] = {k: (v[:j] if isinstance(v, list) else v) for k, v in s.items()}
+            else:
+                kisa += 1
+    print(f"Veri hazır: {len(data)} coin, {kisa} coin verisi yetersiz/alınamadı.", flush=True)
     with gzip.open(CACHE, "wt") as f:
         json.dump({"days": days, "created": created, "data": data}, f)
     return data, created
@@ -219,6 +227,13 @@ def search(bench, rej, t0, t1, days):
     return snapshot()
 
 
+CHECK = [
+    ("4H→30m MEVCUT AYAR", "30m", {}),
+    ("4H→30m OPTİMİZE", "30m", {"TOUCH_TOL": 0.1, "WICK_MIN": 0.5, "MAX_PIERCE": 0.25, "MIN_RR": 1.5, "S.k": 2}),
+    ("4H→15m OPTİMİZE", "15m", {"TOUCH_TOL": 0.1, "WICK_MIN": 0.5, "MAX_PIERCE": 0.25, "MIN_RR": 3.0, "S.retest": 12}),
+]
+
+
 def main():
     days = max(30, min(int(os.getenv("PA_BACKTEST", "120") or 120), 150))
     test_days = max(10, min(int(os.getenv("PA_TEST_DAYS", "40") or 40), days - 20))
@@ -233,6 +248,16 @@ def main():
     base = snapshot()
     base_rej = {k: getattr(p, k) for k in REJ_PARAMS}
     bench = Bench(data)
+
+    if os.getenv("PA_MODE", "") == "dogrula":
+        for ad, rej, ayar in CHECK:
+            restore(base)
+            for k, v in ayar.items():
+                set_param(k, v)
+            tr = stats(bench.run(rej, t_start, t_split), tr_days)
+            te = stats(bench.run(rej, t_split, t_end), te_days)
+            note(f"{ad} | ilk {tr_days} gün: {fmt(tr)} || son {te_days} gün: {fmt(te)}")
+        return
 
     for rej in ("15m", "30m", "1H"):
         tr = stats(bench.run(rej, t_start, t_split), tr_days)

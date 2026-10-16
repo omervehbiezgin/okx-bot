@@ -38,6 +38,7 @@ jobs:
         env:
           PA_BACKTEST: ${{ inputs.gun || '120' }}
           PA_TEST_DAYS: ${{ inputs.dogrulama || '40' }}
+          PA_MODE: dogrula
       - name: Test verisini kaydet
         if: always()
         uses: actions/cache/save@v4
