@@ -303,6 +303,7 @@ def setups_at(d, D, datr, piv=None):
             onceki = [q for q in tops if q[0] < ie and (E - q[1]) * -d_ > 0 and ie - q[0] <= cfg["look"]]
             supurme = any((c[ie] - q[1]) * d_ > 0 for q in onceki)
             out.append(dict(dir=d_, level=lvl, key=f"{d_}|{t[iv]}|{t[ie]}", brk=t[b], atr=a,
+                            E=E, brk_ext=(h[b] if d_ == -1 else l[b]),
                             volr=vol_ratio(d, b), brk_vol=(v[b] if v else None),
                             flags=dict(guclu=guclu, rsi=rsi_div, supurme=supurme)))
 
