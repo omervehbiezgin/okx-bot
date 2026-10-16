@@ -1,0 +1,50 @@
+name: PA Saglamlik Analizi
+
+# pa_analiz.py: kapsamlı testin önbellek verisiyle sağlamlık analizi. Mesaj göndermez.
+# Sonuç "pa-test-sonuclari" dalına analiz.md olarak eklenir.
+
+on:
+  push:
+    branches: [pa-strateji]
+    paths: [pa_analiz.py]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: okx-pa-test
+
+jobs:
+  analiz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test verisini geri yukle
+        uses: actions/cache/restore@v4
+        with:
+          path: bt_cache2.json.gz
+          key: pa-bt2-analiz-${{ github.run_id }}
+          restore-keys: pa-bt2-
+      - run: pip install requests numpy
+      - run: python pa_analiz.py
+        env:
+          PA_BACKTEST: "120"
+          PA_TEST_DAYS: "40"
+      - name: Sonucu pa-test-sonuclari dalina ekle
+        if: always()
+        run: |
+          [ -f analiz.md ] || exit 0
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git clone -q --depth 1 -b pa-test-sonuclari "$URL" /tmp/sonuc
+          cp analiz.md /tmp/sonuc/
+          cd /tmp/sonuc
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add analiz.md
+          git commit -q -m "PA sağlamlık analizi (çalışma ${{ github.run_id }})"
+          git push -q origin HEAD:pa-test-sonuclari

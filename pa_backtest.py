@@ -313,8 +313,8 @@ def simulate(g, cfg, arrs):
     j = bisect.bisect_left(t, g["t"])
     n = len(t)
 
-    def res(gross, fee, sonuc):
-        return gross - fee / sp, gross, sonuc
+    def res(gross, fee, sonuc, k=None):
+        return gross - fee / sp, gross, sonuc, (t[min(k, n - 1)] if k is not None else t[-1])
 
     if mode != "piyasa":
         son = g["t"] + p.FILL_BARS * g["rej_sec"]
@@ -327,14 +327,14 @@ def simulate(g, cfg, arrs):
             if fill:
                 dolu = True
                 if (hi >= sl) if d == -1 else (lo <= sl):
-                    return res(-1.0, fee_in + TAKER, "stop")
+                    return res(-1.0, fee_in + TAKER, "stop", j)
                 j += 1
                 break
             j += 1
         if not dolu:
             return "dolmadi"
     if j >= n:
-        return res(0.0, fee_in + TAKER, "açık")
+        return res(0.0, fee_in + TAKER, "açık", n - 1)
     hs, ls = H[j:], Lw[j:]
     adv, fav = (hs, ls) if d == -1 else (ls, hs)
 
@@ -349,25 +349,25 @@ def simulate(g, cfg, arrs):
     ra = abs(a - e) / R
     if not kismi:
         if i_s is not None and (i_a is None or i_s <= i_a):
-            return res(-1.0, fee_in + TAKER, "stop")
+            return res(-1.0, fee_in + TAKER, "stop", j + i_s)
         if i_a is not None:
-            return res(ra, fee_in + MAKER, "TP")
-        return res((C[-1] - e) * d / R, fee_in + TAKER, "açık")
+            return res(ra, fee_in + MAKER, "TP", j + i_a)
+        return res((C[-1] - e) * d / R, fee_in + TAKER, "açık", n - 1)
     rb = abs(b - e) / R
     if i_s is not None and (i_a is None or i_s <= i_a):
-        return res(-1.0, fee_in + TAKER, "stop")
+        return res(-1.0, fee_in + TAKER, "stop", j + i_s)
     if i_a is None:
-        return res((C[-1] - e) * d / R, fee_in + TAKER, "açık")
+        return res((C[-1] - e) * d / R, fee_in + TAKER, "açık", n - 1)
     if hit_fav(b)[i_a]:
-        return res(0.5 * ra + 0.5 * rb, fee_in + MAKER, "TP2")
+        return res(0.5 * ra + 0.5 * rb, fee_in + MAKER, "TP2", j + i_a)
     hs2 = slice(i_a + 1, None)
     i_be = first_true(hit_adv(e)[hs2])
     i_b = first_true(hit_fav(b)[hs2])
     if i_be is not None and (i_b is None or i_be <= i_b):
-        return res(0.5 * ra, fee_in + 0.5 * MAKER + 0.5 * TAKER, "TP1+başabaş")
+        return res(0.5 * ra, fee_in + 0.5 * MAKER + 0.5 * TAKER, "TP1+başabaş", j + i_a + 1 + i_be)
     if i_b is not None:
-        return res(0.5 * ra + 0.5 * rb, fee_in + MAKER, "TP2")
-    return res(0.5 * ra + 0.5 * (C[-1] - e) * d / R, fee_in + 0.5 * MAKER + 0.5 * TAKER, "açık")
+        return res(0.5 * ra + 0.5 * rb, fee_in + MAKER, "TP2", j + i_a + 1 + i_b)
+    return res(0.5 * ra + 0.5 * (C[-1] - e) * d / R, fee_in + 0.5 * MAKER + 0.5 * TAKER, "açık", n - 1)
 
 
 def passes(g, cfg):

@@ -4,8 +4,6 @@ name: PA Gecmis Test
 # canlı botun durum dosyasına dokunmaz. Sonuç tablosu "pa-test-sonuclari" dalına bt_sonuc.md olarak yazılır.
 
 on:
-  push:
-    branches: [pa-strateji]
   workflow_dispatch:
     inputs:
       gun:
