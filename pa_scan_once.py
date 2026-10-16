@@ -519,12 +519,10 @@ def simulate(g, s15):
 
 VARIANTS = [
     ("mevcut ayarlar", {}),
-    ("+4H EMA50 filtresi", dict(TREND_EMA=50)),
-    ("+taze bölge (en fazla 1 temas)", dict(ZONE_MAX_TOUCH=1)),
-    ("sadece engulfing", dict(PATTERNS=("engulfing",))),
-    ("sadece pin bar", dict(PATTERNS=("pin",))),
-    ("EMA50 + taze bölge", dict(TREND_EMA=50, ZONE_MAX_TOUCH=1)),
-    ("EMA50 + taze bölge + TP2 en az 2.5R", dict(TREND_EMA=50, ZONE_MAX_TOUCH=1, MIN_RR=2.5)),
+    ("EMA50", dict(TREND_EMA=50)),
+    ("EMA50 + sadece engulfing", dict(TREND_EMA=50, PATTERNS=("engulfing",))),
+    ("EMA50 + sadece engulfing + TP2 en az 2.5R", dict(TREND_EMA=50, PATTERNS=("engulfing",), MIN_RR=2.5)),
+    ("EMA50 + pin bar", dict(TREND_EMA=50, PATTERNS=("pin",))),
 ]
 
 
