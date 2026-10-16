@@ -52,6 +52,9 @@ MAX_STOP_PCT = 5.0         # stop mesafesi % en fazla (3x-5x kaldıraçla anlaml
 MIN_RR = 2.0               # TP2 en az kaç R olmalı
 FUNDING_WARN = 0.0005      # |funding| bu değerin üstündeyse uyarı (%0,05)
 RESEND_HOURS = 12          # aynı coin+yön+bölge için tekrar sinyal en erken kaç saat sonra
+TREND_EMA = 0              # >0 ise 4H kapanış bu EMA'nın doğru tarafında olmalı (0 = kapalı)
+ZONE_MAX_TOUCH = None      # sayı verilirse bölgeye daha önce en fazla bu kadar 1H mum değmiş olmalı (taze bölge)
+PATTERNS = ("engulfing", "pin")   # kullanılan tetik türleri
 RISK_PCT = 1.0             # mesajdaki pozisyon büyüklüğü önerisi için işlem başı risk %
 REQUEST_PAUSE = 0.1
 SEC15 = 900
@@ -157,11 +160,24 @@ def trend_4h(s):
     (_, h1), (_, h2) = ph[-2], ph[-1]
     (_, l1), (_, l2) = pl[-2], pl[-1]
     c = s["c"][-1]
-    if h2 > h1 and l2 > l1 and c > l2:
+    e = None
+    if TREND_EMA and len(s["c"]) >= TREND_EMA:
+        e = sum(s["c"][:TREND_EMA]) / TREND_EMA
+        k = 2 / (TREND_EMA + 1)
+        for v in s["c"][TREND_EMA:]:
+            e = v * k + e * (1 - k)
+    if h2 > h1 and l2 > l1 and c > l2 and (e is None or c > e):
         return 1
-    if h2 < h1 and l2 < l1 and c < h2:
+    if h2 < h1 and l2 < l1 and c < h2 and (e is None or c < e):
         return -1
     return 0
+
+
+def fresh_fail(arr, touches, start, n):
+    """ZONE_MAX_TOUCH açıksa: bölgeye daha önce çok fazla 1H mum değmişse True."""
+    if ZONE_MAX_TOUCH is None:
+        return False
+    return sum(1 for j in range(start, n) if touches(arr[j])) > ZONE_MAX_TOUCH
 
 
 def zones_1h(s, d):
@@ -189,6 +205,8 @@ def zones_1h(s, d):
                 continue
             if any(c[j] < lo for j in range(i + 1, n)):
                 continue
+            if fresh_fail(l, lambda x: x <= hi, i + PIVOT_K + 1, n):
+                continue
             out.append((lo, hi, "talep bölgesi", f"D{t[i]}"))
         # Kırılan direnç -> destek
         for i, p in ph:
@@ -198,6 +216,8 @@ def zones_1h(s, d):
             lo, hi = clamp(max(o[i], c[i]), p, False)
             if any(c[j] < lo for j in range(br + 1, n)):
                 continue
+            if fresh_fail(l, lambda x: x <= hi, br + 1, n):
+                continue
             out.append((lo, hi, "kırılan direnç", f"F{t[i]}"))
     else:
         for i, p in ph:
@@ -206,6 +226,8 @@ def zones_1h(s, d):
                 continue
             if any(c[j] > hi for j in range(i + 1, n)):
                 continue
+            if fresh_fail(h, lambda x: x >= lo, i + PIVOT_K + 1, n):
+                continue
             out.append((lo, hi, "arz bölgesi", f"S{t[i]}"))
         for i, p in pl:
             br = next((j for j in range(i + 1, n) if c[j] < p), None)
@@ -213,6 +235,8 @@ def zones_1h(s, d):
                 continue
             lo, hi = clamp(p, min(o[i], c[i]), True)
             if any(c[j] > hi for j in range(br + 1, n)):
+                continue
+            if fresh_fail(h, lambda x: x >= lo, br + 1, n):
                 continue
             out.append((lo, hi, "kırılan destek", f"F{t[i]}"))
     return out
@@ -259,6 +283,8 @@ def analyze(inst, s4, s1, s15, t_close):
     if not trg:
         return None
     d, pat, plo, phi = trg
+    if not any(p in pat for p in PATTERNS):
+        return None
 
     h4 = upto(s4, t_close, TREND_BARS)
     if trend_4h(h4) != d:
@@ -491,22 +517,21 @@ def simulate(g, s15):
     return (0.5 + 0.5 * acik if half else acik), "açık"
 
 
-def backtest(days):
-    days = max(1, min(days, 6))
-    now = int(time.time())
-    end_open = (now // SEC15) * SEC15 - SEC15
+VARIANTS = [
+    ("mevcut ayarlar", {}),
+    ("+4H EMA50 filtresi", dict(TREND_EMA=50)),
+    ("+taze bölge (en fazla 1 temas)", dict(ZONE_MAX_TOUCH=1)),
+    ("sadece engulfing", dict(PATTERNS=("engulfing",))),
+    ("sadece pin bar", dict(PATTERNS=("pin",))),
+    ("EMA50 + taze bölge", dict(TREND_EMA=50, ZONE_MAX_TOUCH=1)),
+    ("EMA50 + taze bölge + TP2 en az 2.5R", dict(TREND_EMA=50, ZONE_MAX_TOUCH=1, MIN_RR=2.5)),
+]
+
+
+def run_bt(data, days, end_open):
     n15 = days * 96
-    symbols = get_symbols()
-    print(f"Geçmiş test: son {days} gün, {len(symbols)} sembol. (Mesaj gönderilmez.)", flush=True)
     sigs = []
-    for inst in symbols:
-        try:
-            s15 = fetch(inst, "15m", SEC15, n15 + 60)
-            s4 = fetch(inst, "4H", 14400, TREND_BARS + days * 6 + 10)
-            s1 = fetch(inst, "1H", 3600, ZONE_BARS + days * 24 + 10)
-        except Exception as e:
-            print(f"{inst} hata: {e}")
-            continue
+    for inst, (s4, s1, s15) in data.items():
         last_sent = {}
         for co in range(end_open - (n15 - 1) * SEC15, end_open + 1, SEC15):
             t_close = co + SEC15
@@ -519,23 +544,49 @@ def backtest(days):
                 last_sent[g["key"]] = t_close
                 g["R"], g["sonuc"] = simulate(g, s15)
                 sigs.append(g)
+    sigs.sort(key=lambda g: g["t"])
+    return sigs
+
+
+def ozet(sigs):
+    kapali = [g for g in sigs if g["sonuc"] != "açık"]
+    stop = sum(1 for g in kapali if g["sonuc"] == "stop")
+    toplam = sum(g["R"] for g in sigs)
+    oran = (len(kapali) - stop) / len(kapali) * 100 if kapali else 0
+    return (f"{len(sigs)} sinyal (L{sum(1 for g in sigs if g['dir'] == 1)}/S{sum(1 for g in sigs if g['dir'] == -1)}), "
+            f"TP1+ oranı %{oran:.0f}, toplam {toplam:+.1f}R, sinyal başı "
+            f"{toplam / len(sigs) if sigs else 0:+.2f}R")
+
+
+def backtest(days):
+    days = max(1, min(days, 6))
+    now = int(time.time())
+    end_open = (now // SEC15) * SEC15 - SEC15
+    symbols = get_symbols()
+    print(f"Geçmiş test: son {days} gün, {len(symbols)} sembol. (Mesaj gönderilmez.)", flush=True)
+    data = {}
+    for inst in symbols:
+        try:
+            data[inst] = (fetch(inst, "4H", 14400, TREND_BARS + days * 6 + 10),
+                          fetch(inst, "1H", 3600, ZONE_BARS + days * 24 + 10),
+                          fetch(inst, "15m", SEC15, days * 96 + 60))
+        except Exception as e:
+            print(f"{inst} hata: {e}")
         time.sleep(REQUEST_PAUSE)
 
-    sigs.sort(key=lambda g: g["t"])
-    for g in sigs:
-        ts = datetime.fromtimestamp(g["t"], TR)
-        print(f"{ts:%d.%m %H:%M}  {'LONG ' if g['dir'] == 1 else 'SHORT'} {short(g['inst']):<10} "
-              f"{g['pattern']:<20} {g['zone_name']:<15} stop %{g['stop_pct']:.2f}  TP2 {g['rr2']:.1f}R  "
-              f"-> {g['sonuc']:<14} {g['R']:+.2f}R")
-    kapali = [g for g in sigs if g["sonuc"] != "açık"]
-    toplam = sum(g["R"] for g in sigs)
-    stop = sum(1 for g in kapali if g["sonuc"] == "stop")
-    ozet = (f"PA geçmiş test ({days} gün, {len(symbols)} coin): {len(sigs)} sinyal "
-            f"(long {sum(1 for g in sigs if g['dir'] == 1)}, short {sum(1 for g in sigs if g['dir'] == -1)}), "
-            f"kapanan {len(kapali)}: stop {stop}, TP1+ {len(kapali) - stop}; "
-            f"toplam {toplam:+.1f}R, sinyal başı {toplam / len(sigs) if sigs else 0:+.2f}R")
-    print("::notice::" + ozet)
-    print(ozet)
+    g0 = {k: globals()[k] for k in ("TREND_EMA", "ZONE_MAX_TOUCH", "PATTERNS", "MIN_RR")}
+    for ad, ayar in VARIANTS:
+        globals().update(g0)
+        globals().update(ayar)
+        sigs = run_bt(data, days, end_open)
+        print(f"\n===== {ad} =====")
+        for g in sigs:
+            ts = datetime.fromtimestamp(g["t"], TR)
+            print(f"{ts:%d.%m %H:%M}  {'LONG ' if g['dir'] == 1 else 'SHORT'} {short(g['inst']):<10} "
+                  f"{g['pattern']:<20} {g['zone_name']:<15} stop %{g['stop_pct']:.2f}  TP2 {g['rr2']:.1f}R  "
+                  f"-> {g['sonuc']:<14} {g['R']:+.2f}R")
+        print(f"::notice::[{days} gün, {len(data)} coin] {ad}: {ozet(sigs)}")
+    globals().update(g0)
 
 
 if __name__ == "__main__":

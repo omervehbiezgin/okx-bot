@@ -8,7 +8,7 @@ on:
     inputs:
       gun:
         description: "Kaç gün geriye test edilsin (1-6)"
-        default: "5"
+        default: "6"
   push:
     branches: [pa-strateji]
 
@@ -27,4 +27,4 @@ jobs:
       - run: pip install requests
       - run: python pa_scan_once.py
         env:
-          PA_BACKTEST: ${{ inputs.gun || '5' }}
+          PA_BACKTEST: ${{ inputs.gun || '6' }}
