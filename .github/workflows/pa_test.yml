@@ -4,11 +4,13 @@ name: PA Gecmis Test
 # durum dosyasına dokunmaz. Sonuç, çalışmanın özet sayfasında ve log'da görünür.
 
 on:
+  push:
+    branches: [pa-strateji]
   workflow_dispatch:
     inputs:
       gun:
-        description: "Kaç gün geriye test edilsin (1-6)"
-        default: "6"
+        description: "Kaç gün geriye test edilsin (7-150)"
+        default: "120"
 
 concurrency:
   group: okx-pa-test
@@ -25,4 +27,4 @@ jobs:
       - run: pip install requests
       - run: python pa_scan_once.py
         env:
-          PA_BACKTEST: ${{ inputs.gun || '6' }}
+          PA_BACKTEST: ${{ inputs.gun || '120' }}
