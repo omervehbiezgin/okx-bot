@@ -117,13 +117,37 @@ def api(path, params):
     return j["data"]
 
 
+def crypto_only():
+    """Sadece KRİPTO perpetual'ları döndürür (hisse, emtia, döviz vb. TradFi kontratları hariç).
+    OKX 'instCategory': 1 = kripto, 3 = hisse, 4 = emtia, 5 = döviz, 6 = tahvil.
+    Kategori bilgisi alınamazsa None döner ve filtre uygulanmaz."""
+    try:
+        data = api("/api/v5/public/instruments", {"instType": "SWAP"})
+    except Exception as e:
+        print("UYARI: kontrat kategorileri alınamadı, TradFi filtresi uygulanmadı:", e)
+        return None
+    kategori = {d["instId"]: str(d.get("instCategory", "")) for d in data}
+    if not any(kategori.values()):
+        print("UYARI: OKX kategori bilgisi vermedi, TradFi filtresi uygulanmadı.")
+        return None
+    tradfi = sorted(k.replace("-USDT-SWAP", "") for k, v in kategori.items()
+                    if v and v != "1" and k.endswith("-USDT-SWAP"))
+    if tradfi:
+        print(f"Kripto dışı {len(tradfi)} kontrat taranmıyor: {', '.join(tradfi)}")
+    return {k for k, v in kategori.items() if v in ("", "1")}
+
+
 def get_symbols():
-    """OKX'te işlem gören TÜM USDT perpetual (futures) sözleşmeleri, hacme göre sıralı."""
+    """OKX'teki kripto USDT perpetual (futures) sözleşmeleri, hacme göre sıralı.
+    Hisse/emtia gibi TradFi kontratları ve 24s hacmi düşük coinler hariç."""
+    kripto = crypto_only()
     data = api("/api/v5/market/tickers", {"instType": "SWAP"})
     rows = []
     for t in data:
         inst = t["instId"]
         if not inst.endswith("-USDT-SWAP"):
+            continue
+        if kripto is not None and inst not in kripto:
             continue
         try:
             qv = float(t["volCcy24h"]) * float(t["last"])
