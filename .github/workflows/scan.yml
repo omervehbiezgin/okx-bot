@@ -21,7 +21,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 355
+    timeout-minutes: 358
     steps:
       - uses: actions/checkout@v4
 
@@ -38,23 +38,25 @@ jobs:
 
       - run: pip install requests
 
-      - name: Taramayi 15 dakikada bir calistir (yaklasik 5 saat 40 dk)
+      - name: Taramayi 15 dakikada bir calistir (yaklasik 5 saat 30 dk)
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           TEST_RUN: ${{ inputs.test }}
         run: |
           BASLA=$(date +%s)
-          SURE=20400
+          SURE=19800      # 5 saat 30 dk: bu süreden sonra yeni tarama BAŞLATILMAZ.
+                          # Son tarama + durum kaydı + yeni turu başlatma için en az ~28 dk pay kalır
+                          # (GitHub sınırı 6 saat, iş zaman aşımı 358 dk).
           while true; do
             python okx_scan_once.py || echo "Tarama hatayla bitti, döngü devam ediyor."
             export TEST_RUN=false          # Test mesajı sadece ilk turda gitsin
             SIMDI=$(date +%s)
-            if [ $((SIMDI - BASLA)) -ge $SURE ]; then
-              echo "Süre doldu, bu tur bitiyor."
+            BEKLE=$(( 900 - SIMDI % 900 + 20 ))   # Bir sonraki 15 dk mum kapanışı + 20 sn
+            if [ $(( SIMDI + BEKLE - BASLA )) -ge $SURE ]; then
+              echo "Süre doluyor, bu tur bitiyor; bir sonraki tur başlatılacak."
               break
             fi
-            BEKLE=$(( 900 - SIMDI % 900 + 20 ))   # Bir sonraki 15 dk mum kapanışı + 20 sn
             echo "Sonraki tarama $BEKLE saniye sonra."
             sleep $BEKLE
           done
