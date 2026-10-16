@@ -22,12 +22,11 @@ b.time.sleep = lambda s: None
 KES = {}
 
 now = int(time.time())
-GERI = {"15m": 32, "1H": 12}          # 15m: son 8 saat, 1H: son 12 saat
+GERI = {"15m": 40}          # 15m: son 8 saat, 1H: son 12 saat
 for bar, n in GERI.items():
     cfg = b.BREAKOUT[bar]
     sonuc = {}
-    for ad, ayar in [("mevcut", {}), ("hacim oranı kapalı", {"BRK_MIN_VOL_RATIO": 0}),
-                     ("%80 kapalı", {"BRK_LIVE_PCT": 0}), ("ikisi de kapalı", {"BRK_MIN_VOL_RATIO": 0, "BRK_LIVE_PCT": 0})]:
+    for ad, ayar in [("mevcut", {})]:
         eski = {k: getattr(b, k) for k in ayar}
         for k, v in ayar.items(): setattr(b, k, v)
         toplam, coinler = 0, set()
@@ -37,10 +36,10 @@ for bar, n in GERI.items():
             for s in syms:
                 try:
                     if b.analyze_breakout(s, bar, cfg, co):
-                        toplam += 1; coinler.add(s.replace("-USDT-SWAP", ""))
+                        toplam += 1; coinler.add(time.strftime("%H:%M", time.gmtime(co + 3*3600)) + " " + s.replace("-USDT-SWAP", ""))
                 except Exception:
                     pass
         KES = {}
         for k, v in eski.items(): setattr(b, k, v)
-        sonuc[ad] = f"{toplam} ({', '.join(sorted(coinler)[:6])})"
+        sonuc[ad] = f"{toplam} ({', '.join(sorted(coinler))})"
     note(f"{bar} son {n} mum: " + " ; ".join(f"{k}: {v}" for k, v in sonuc.items()))
