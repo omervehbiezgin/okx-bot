@@ -1,13 +1,17 @@
 # okx-bot
 
-## PA stratejisi (ayrı sistem)
+## PA stratejisi: günlük kırılım + retest + red (ayrı sistem)
 
 `pa_scan_once.py` + `.github/workflows/pa_scan.yml`. Mevcut hacim tarayıcısından tamamen bağımsızdır
 (ayrı dosya, ayrı `pa_state.json`, ayrı cache ve concurrency grubu); sadece aynı Telegram botuna yazar.
 
-- 4H: tepe/dip yapısı (HH-HL / LH-LL) + EMA50 ile yön
-- 1H: talep/arz bölgesi veya kırılan seviye
-- 15m: bölgeye temasta engulfing veya pin bar
-- Mesajda giriş, stop, TP1 (1R), TP2 (sıradaki seviye, en az 2R) ve %1 risk için pozisyon büyüklüğü
+- Short: günlükte yükselen yapı (HH-HL), son tepeyi oluşturan dip günlük KAPANIŞLA kırılır,
+  fiyat uzaklaşıp seviyeye geri gelir, 1H mumda red (üst fitil, seviyenin altında kapanış).
+- Long: tam tersi.
+- Stop red mumunun fitili ötesi, TP1 = 1R, TP2 = sıradaki günlük yapı seviyesi (en az 2R).
+- Her kurulum için sadece ilk red sinyali gönderilir.
+
+TradingView: `pa_kirilim_retest.pine` aynı kuralları grafikte gösterir (1 saatlik grafikte),
+sinyalde Alış/Satış Pozisyonu benzeri kutu ve giriş/SL/TP etiketleri çizer, alarm kurulabilir.
 
 Geçmiş test: Actions → "PA Gecmis Test" → Run workflow (mesaj göndermez).

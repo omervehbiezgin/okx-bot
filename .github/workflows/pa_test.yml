@@ -4,8 +4,6 @@ name: PA Gecmis Test
 # durum dosyasına dokunmaz. Sonuç, çalışmanın özet sayfasında ve log'da görünür.
 
 on:
-  push:
-    branches: [pa-strateji]
   workflow_dispatch:
     inputs:
       gun:

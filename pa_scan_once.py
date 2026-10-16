@@ -46,7 +46,7 @@ STRUCT_DAYS = 150          # yapı için bakılan gün sayısı
 TOP_MAX_AGE = 60           # kırılan yapının son tepesi/dibi en fazla kaç günlük olabilir
 RETEST_DAYS = 20           # kırılımdan sonra retest için beklenecek en fazla gün
 MIN_AWAY = 0.5             # retestten önce seviyeden en az (günlük ort. mum boyu x bu) uzaklaşma
-TOUCH_TOL = 0.25           # seviyeye "değme" toleransı: günlük ort. mum boyu x bu
+TOUCH_TOL = 0.15           # seviyeye "değme" toleransı: günlük ort. mum boyu x bu
 MAX_PIERCE = 0.5           # red mumu seviyeyi en fazla (günlük ort. mum boyu x bu) aşabilir
 WICK_MIN = 0.3             # red mumunda ret yönündeki fitil, mum boyunun en az bu oranı
 CLOSE_HALF = 0.5           # kapanış mumun alt (long'da üst) yarısında
@@ -498,13 +498,10 @@ def ozet(sigs):
 
 
 BT_VARIANTS = [
-    ("red 1H (temel)", "1H", {}),
-    ("red 1H, uzaklaşma 1.0", "1H", dict(MIN_AWAY=1.0)),
-    ("red 1H, fitil en az %50", "1H", dict(WICK_MIN=0.5)),
-    ("red 1H, seviyeyi en fazla 0.25 aşma", "1H", dict(MAX_PIERCE=0.25)),
-    ("red 1H, TP2 en az 2.5R", "1H", dict(MIN_RR=2.5)),
-    ("red 1H, dar temas toleransı 0.15", "1H", dict(TOUCH_TOL=0.15)),
-    ("red 4H (temel)", "4H", {}),
+    ("mevcut ayarlar (red 1H)", "1H", {}),
+    ("red 4H", "4H", {}),
+    ("geniş temas toleransı 0.25", "1H", dict(TOUCH_TOL=0.25)),
+    ("uzaklaşma 1.0", "1H", dict(MIN_AWAY=1.0)),
 ]
 
 
