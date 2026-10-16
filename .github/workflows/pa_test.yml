@@ -9,8 +9,6 @@ on:
       gun:
         description: "Kaç gün geriye test edilsin (1-6)"
         default: "6"
-  push:
-    branches: [pa-strateji]
 
 concurrency:
   group: okx-pa-test

@@ -6,7 +6,8 @@ Mevcut okx_scan_once.py'den TAMAMEN BAĞIMSIZDIR: onu içe aktarmaz, onun durum 
 
 Strateji (sadece kripto USDT perpetual, long ve short):
   1) 4H yapı  : son iki tepe ve iki dip yükseliyorsa (HH-HL) sadece LONG,
-                alçalıyorsa (LH-LL) sadece SHORT. Belirsizse işlem yok.
+                alçalıyorsa (LH-LL) sadece SHORT. Ayrıca 4H kapanış EMA50'nin aynı tarafında
+                olmalı. Belirsizse işlem yok.
   2) 1H bölge : LONG için talep bölgesi (güçlü yükselişin başladığı dip) veya kırılan eski direnç;
                 SHORT için arz bölgesi (güçlü düşüşün başladığı tepe) veya kırılan eski destek.
                 Bölge oluştuktan sonra 1H kapanışla bozulmamış olmalı.
@@ -52,7 +53,7 @@ MAX_STOP_PCT = 5.0         # stop mesafesi % en fazla (3x-5x kaldıraçla anlaml
 MIN_RR = 2.0               # TP2 en az kaç R olmalı
 FUNDING_WARN = 0.0005      # |funding| bu değerin üstündeyse uyarı (%0,05)
 RESEND_HOURS = 12          # aynı coin+yön+bölge için tekrar sinyal en erken kaç saat sonra
-TREND_EMA = 0              # >0 ise 4H kapanış bu EMA'nın doğru tarafında olmalı (0 = kapalı)
+TREND_EMA = 50             # >0 ise 4H kapanış bu EMA'nın doğru tarafında olmalı (0 = kapalı)
 ZONE_MAX_TOUCH = None      # sayı verilirse bölgeye daha önce en fazla bu kadar 1H mum değmiş olmalı (taze bölge)
 PATTERNS = ("engulfing", "pin")   # kullanılan tetik türleri
 RISK_PCT = 1.0             # mesajdaki pozisyon büyüklüğü önerisi için işlem başı risk %
@@ -519,10 +520,9 @@ def simulate(g, s15):
 
 VARIANTS = [
     ("mevcut ayarlar", {}),
-    ("EMA50", dict(TREND_EMA=50)),
-    ("EMA50 + sadece engulfing", dict(TREND_EMA=50, PATTERNS=("engulfing",))),
-    ("EMA50 + sadece engulfing + TP2 en az 2.5R", dict(TREND_EMA=50, PATTERNS=("engulfing",), MIN_RR=2.5)),
-    ("EMA50 + pin bar", dict(TREND_EMA=50, PATTERNS=("pin",))),
+    ("sadece engulfing", dict(PATTERNS=("engulfing",))),
+    ("sadece pin bar", dict(PATTERNS=("pin",))),
+    ("EMA50 filtresi kapalı", dict(TREND_EMA=0)),
 ]
 
 
