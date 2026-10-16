@@ -74,7 +74,7 @@ EMA_TASKS = {
     "EMA200_1D":  dict(bar="1Dutc", period=200, bars=420, sec=86400,  off=0),
 }
 
-MAX_ALERTS_PER_SCAN = 10         # bir kırılım mesajında en fazla kaç coin listelensin
+MAX_ALERTS_PER_SCAN = 50         # bir kırılım mesajında en fazla kaç coin listelensin
 REQUEST_PAUSE = 0.1
 # Bir görev state'te İLK KEZ görülüyorsa ve mum bu süreden (saniye) önce kapanmışsa taranmaz.
 LATE_LIMIT = {900: 3600, 3600: 10800, 14400: 21600, 86400: 21600, 604800: 43200}
