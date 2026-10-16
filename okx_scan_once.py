@@ -40,10 +40,10 @@ STATE_FILE = "state.json"
 #   k        : bant genişliği, ortalama mum boyunun en fazla kaç katı olabilir
 #   htf      : yıldız için EMA21'ine bakılan bir üst zaman dilimi
 BREAKOUT = {
-    "15m":   dict(lookback=96, base=32, k=3.5, sec=900,   htf="1H",    htf_sec=3600,   min_usdt=10_000),
-    "1H":    dict(lookback=72, base=24, k=3.0, sec=3600,  htf="4H",    htf_sec=14400,  min_usdt=30_000),
-    "4H":    dict(lookback=60, base=20, k=3.0, sec=14400, htf="1Dutc", htf_sec=86400,  min_usdt=100_000),
-    "1Dutc": dict(lookback=40, base=14, k=2.5, sec=86400, htf="1Wutc", htf_sec=604800, min_usdt=500_000),
+    "15m":   dict(lookback=96, base=32, k=3.5, sec=900,   htf="1H",    htf_sec=3600),
+    "1H":    dict(lookback=72, base=24, k=3.0, sec=3600,  htf="4H",    htf_sec=14400),
+    "4H":    dict(lookback=60, base=20, k=3.0, sec=14400, htf="1Dutc", htf_sec=86400),
+    "1Dutc": dict(lookback=40, base=14, k=2.5, sec=86400, htf="1Wutc", htf_sec=604800),
 }
 BRK_CLOSE_OUT = 0.20     # kapanış, bandın dışında en az bant genişliği x bu oran
 BRK_BODY = 0.60          # gövde / mum boyu
@@ -51,7 +51,8 @@ BRK_CLOSE_POS = 0.75     # kapanış mumun üst (alt) çeyreğinde
 BRK_TOUCH_ZONE = 0.15    # sınıra "yaklaşma" bölgesi: bant genişliği x bu oran
 BRK_MIN_TOUCH = 2        # üst ve alt sınıra en az kaç mum yaklaşmalı
 BRK_LIVE_PCT = 80        # bant içindeki mumların en az % kaçında işlem olmuş olmalı (boş mumlu sahte bantları eler)
-# min_usdt (yukarıda): kırılım mumunun en az USDT hacmi; altındaysa kırılım sayılmaz
+BRK_MIN_VOL_RATIO = 1.2  # kırılım mumu hacmi, önceki 'lookback' mumun ortanca hacminin en az bu katı (göstergeyle aynı)
+MIN_24H_USDT = 1_000_000 # son 24 saat USDT hacmi bunun altındaki coinler hiç taranmaz (hacimsiz coin elemesi)
 BRK_STAR_VOL = 1.5       # ⭐ hacim normalin en az kaç katı
 BRK_STAR_SIZE = 2.0      # ⭐ mum boyu bant ortalamasının en az kaç katı
 NOTE_NEAR_PCT = 2.0      # ⚠️ notu: kırılım ters FVG'ye en fazla % kaç uzakta
@@ -128,7 +129,8 @@ def get_symbols():
             qv = float(t["volCcy24h"]) * float(t["last"])
         except (ValueError, KeyError):
             qv = 0.0
-        rows.append((inst, qv))
+        if qv >= MIN_24H_USDT:
+            rows.append((inst, qv))
     rows.sort(key=lambda x: x[1], reverse=True)
     return [s for s, _ in rows]
 
@@ -293,16 +295,16 @@ def analyze_breakout(inst, bar, cfg, candle_open):
     if ust_temas < BRK_MIN_TOUCH or alt_temas < BRK_MIN_TOUCH:
         return None
 
-    # Likidite: kırılım mumu hacmi ve bantta işlem görmüş mum oranı
-    if qv[L] < cfg["min_usdt"]:
-        return None
+    # Likidite: kırılım mumu hacmi normalin en az 1,2 katı ve bantta işlem görmüş mum oranı
     canli = sum(1 for j in band if qv[j] > 0)
     if canli * 100 < BRK_LIVE_PCT * base:
         return None
-
-    # Yıldızlar
     med = statistics.median(qv[L - lb:L])
     ratio = qv[L] / med if med > 0 else None
+    if ratio is None or ratio < BRK_MIN_VOL_RATIO:
+        return None
+
+    # Yıldızlar
     ort_boy = sum(h[j] - l[j] for j in band) / base
     stars = int(ratio is not None and ratio >= BRK_STAR_VOL) + int(boy >= BRK_STAR_SIZE * ort_boy)
 
