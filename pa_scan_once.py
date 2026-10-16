@@ -6,15 +6,14 @@ Mevcut okx_scan_once.py'den TAMAMEN BAĞIMSIZDIR: onu içe aktarmaz, onun durum 
 
 Strateji (sadece kripto USDT perpetual):
   SHORT
-    1) Günlükte yükselen yapı: son tepe bir öncekinden yüksek, o tepeyi oluşturan dip de
-       bir önceki dipten yüksek (HH-HL).
-    2) Son tepeyi oluşturan dip (seviye), günlük KAPANIŞLA aşağı kırılır.
+    1) Yükselen yapı: son tepe bir öncekinden yüksek (ör. tepeler 8 -> 10).
+    2) Bir önceki tepe (8, seviye) KAPANIŞLA aşağı kırılır.
     3) Fiyat seviyeden uzaklaşır (en az yarım günlük ort. mum boyu), sonra seviyeye geri gelir.
     4) Red mumu (REJECT_TF): seviyeye değer, seviyenin altında, mumun alt yarısında kapanır,
        belirgin üst fitil bırakır. Giriş bu mumun kapanışı.
     Kurulum iptal: kırılımdan sonra günlük kapanış seviyenin üstünde olursa ya da
     RETEST_DAYS gün içinde retest gelmezse.
-  LONG: tam tersi (düşen yapı, son dibi oluşturan tepe kapanışla yukarı kırılır, retest, red).
+  LONG: tam tersi (dipler 7 -> 5 ise 7 kapanışla yukarı kırılır, 7'ye retest, red).
 
   Stop: red mumunun fitili ötesi. TP1 = 1R. TP2 = sıradaki günlük yapı seviyesi (en az 2R).
   Her kurulum için sadece ilk red sinyali gönderilir.
@@ -29,6 +28,7 @@ import sys
 import json
 import time
 import bisect
+import statistics
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -54,17 +54,25 @@ MIN_RANGE = 0.5            # red mumu en az (kendi zaman diliminin ort. mum boyu
 SL_BUFFER = 0.1            # stop tamponu: red zaman diliminin ort. mum boyu x bu
 MIN_STOP_PCT = 0.3
 MAX_STOP_PCT = 8.0
+VOL_MULT = 0.0             # >0 ise kırılım mumu hacmi, önceki 20 mumun ortancasının en az bu katı
+BTC_FILTER = False         # True ise long sadece BTC 4H EMA50 üstündeyken, short sadece altındayken
+LEVEL_MODE = "onceki_tepe" # "onceki_tepe" (8->10 ise 8) | "son_dip" (10'u oluşturan dip) | "birlesik"
+ENTRY_MODE = "piyasa"      # "piyasa": red mumu kapanışı | "limit_kapanis" | "limit_yari": fitil ortası | "limit_seviye"
+FILL_BARS = 4              # limit emir en fazla kaç red mumu bekler (dolmazsa iptal)
 MIN_RR = 2.0               # TP2 en az kaç R
 FUNDING_WARN = 0.0005      # |funding| bu değerin üstündeyse uyarı (%0,05)
 RISK_PCT = 1.0             # mesajdaki pozisyon büyüklüğü önerisi için işlem başı risk %
 REQUEST_PAUSE = 0.1
 # -----------------------------------------
 
-TF = {"15m": ("15m", 900), "30m": ("30m", 1800), "1H": ("1H", 3600), "4H": ("4H", 14400), "1D": ("1Dutc", 86400)}
+TF = {"15m": ("15m", 900), "30m": ("30m", 1800), "1H": ("1H", 3600), "4H": ("4H", 14400),
+      "6H": ("6Hutc", 21600), "8H": (None, 28800), "1D": ("1Dutc", 86400)}   # 8H OKX'te yok, 1H'den üretilir
 # Yapı zaman dilimine göre ayarlar (mum sayısı olarak):
 #   k: tepe/dip onayı, look: bakılan mum, top_age: kırılan yapı en fazla kaç mum önce, retest: kırılımdan sonra bekleme
 STRUCT = {
     "1D": dict(k=DAILY_K, look=STRUCT_DAYS, top_age=TOP_MAX_AGE, retest=RETEST_DAYS, ad="günlük"),
+    "8H": dict(k=3, look=180, top_age=45, retest=15, ad="8H"),
+    "6H": dict(k=3, look=180, top_age=60, retest=20, ad="6H"),
     "4H": dict(k=3, look=180, top_age=90, retest=30, ad="4H"),
 }
 DAY = 86400
@@ -112,7 +120,7 @@ def get_symbols():
 def to_series(rows, sec):
     return dict(t=[int(r[0]) // 1000 for r in rows], o=[float(r[1]) for r in rows],
                 h=[float(r[2]) for r in rows], l=[float(r[3]) for r in rows],
-                c=[float(r[4]) for r in rows], sec=sec)
+                c=[float(r[4]) for r in rows], v=[float(r[7]) for r in rows], sec=sec)
 
 
 def fetch(inst, bar, sec, n):
@@ -132,7 +140,8 @@ def fetch(inst, bar, sec, n):
 
 def aggregate(s, sec):
     """Küçük zaman dilimi mumlarından büyük mum (sadece tam dolanlar)."""
-    out = dict(t=[], o=[], h=[], l=[], c=[], sec=sec)
+    out = dict(t=[], o=[], h=[], l=[], c=[], v=[], sec=sec)
+    hv = "v" in s
     need = sec // s["sec"]
     i, n = 0, len(s["t"])
     while i < n:
@@ -146,6 +155,7 @@ def aggregate(s, sec):
             out["h"].append(max(s["h"][i:j]))
             out["l"].append(min(s["l"][i:j]))
             out["c"].append(s["c"][j - 1])
+            out["v"].append(sum(s["v"][i:j]) if hv else 0.0)
         i = j
     return out
 
@@ -177,6 +187,41 @@ def pivots(h, l, a, b, k):
     return ph, pl
 
 
+def rsi_arr(c, n=14):
+    """Wilder RSI."""
+    out = [None] * len(c)
+    if len(c) <= n:
+        return out
+    g = [max(c[i] - c[i - 1], 0) for i in range(1, len(c))]
+    ls = [max(c[i - 1] - c[i], 0) for i in range(1, len(c))]
+    ag, al = sum(g[:n]) / n, sum(ls[:n]) / n
+    for i in range(n, len(c)):
+        if i > n:
+            ag = (ag * (n - 1) + g[i - 1]) / n
+            al = (al * (n - 1) + ls[i - 1]) / n
+        out[i] = 100.0 if al == 0 else 100 - 100 / (1 + ag / al)
+    return out
+
+
+def vol_ratio(d, b):
+    """Kırılım mumu hacmi / önceki 20 mumun ortancası (hesaplanamazsa None)."""
+    if not d.get("v"):
+        return None
+    prev = d["v"][max(0, b - 20):b]
+    if len(prev) < 5:
+        return None
+    med = statistics.median(prev)
+    return d["v"][b] / med if med > 0 else None
+
+
+def vol_ok(d, b):
+    """Kırılım mumu hacmi, önceki 20 mumun ortancasının en az VOL_MULT katı mı?"""
+    if VOL_MULT <= 0:
+        return True
+    r = vol_ratio(d, b)
+    return r is None or r >= VOL_MULT
+
+
 def setups_at(d, D, datr, piv=None):
     """D mumuna kadar (D dahil) kapanmış yapı verisiyle aktif kurulumlar.
     piv: tüm seri için önceden hesaplanmış pivots(h, l, 0, len-1, k) (geçmiş testte hız için)."""
@@ -194,57 +239,72 @@ def setups_at(d, D, datr, piv=None):
         pl = [p for p in piv[1] if lo_i <= p[0] <= hi_i]
     out = []
 
-    # SHORT: yükselen yapıda son tepeyi oluşturan dip kapanışla kırıldı
-    for x, (ih, H) in enumerate(ph):
-        if D - ih > cfg["top_age"] or x == 0:
-            continue
-        H0 = ph[x - 1][1]
-        lows = [p for p in pl if p[0] < ih]
-        if len(lows) < 2 or lows[-1][0] < ph[x - 1][0]:
-            continue
-        (iv, Lv), (_, L0) = lows[-1], lows[-2]
-        if not (H > H0 and Lv > L0):
-            continue
-        b = None
-        for j in range(ih + 1, D + 1):
-            if c[j] < Lv:
-                b = j
-                break
-            if h[j] > H:
-                break
-        if b is None or D - b > cfg["retest"]:
-            continue
-        if any(c[j] > Lv for j in range(b + 1, D + 1)):
-            continue
-        if min(l[b:D + 1]) > Lv - MIN_AWAY * a:
-            continue
-        out.append(dict(dir=-1, level=Lv, key=f"-1|{t[iv]}", brk=t[b], atr=a))
+    rsi = d.get("_rsi")
+    if rsi is None or len(rsi) != len(c):
+        rsi = rsi_arr(c)
+        d["_rsi"] = rsi
+    o = d["o"]
+    v = d.get("v") or []
 
-    # LONG: düşen yapıda son dibi oluşturan tepe kapanışla kırıldı
-    for x, (il, Lo) in enumerate(pl):
-        if D - il > cfg["top_age"] or x == 0:
-            continue
-        L0 = pl[x - 1][1]
-        highs = [p for p in ph if p[0] < il]
-        if len(highs) < 2 or highs[-1][0] < pl[x - 1][0]:
-            continue
-        (iv, Hv), (_, H0) = highs[-1], highs[-2]
-        if not (Lo < L0 and Hv < H0):
-            continue
-        b = None
-        for j in range(il + 1, D + 1):
-            if c[j] > Hv:
-                b = j
-                break
-            if l[j] < Lo:
-                break
-        if b is None or D - b > cfg["retest"]:
-            continue
-        if any(c[j] < Hv for j in range(b + 1, D + 1)):
-            continue
-        if max(h[b:D + 1]) < Hv + MIN_AWAY * a:
-            continue
-        out.append(dict(dir=1, level=Hv, key=f"1|{t[iv]}", brk=t[b], atr=a))
+    # Seviye tanımı (LEVEL_MODE), short için (long tam tersi):
+    #   "onceki_tepe": bir önceki tepe (tepeler 8 -> 10 ise 8) kapanışla kırılır
+    #   "son_dip"    : son tepeyi oluşturan dip (6 -> 8 -> 7 -> 10 ise 7) kapanışla kırılır
+    #   "birlesik"   : seviye önceki tepe (8), ama 7 de kapanışla kırılmış olmalı (trend dönüşü teyidi)
+    for d_ in (-1, 1):
+        tops = ph if d_ == -1 else pl          # short: tepeler, long: dipler
+        bots = pl if d_ == -1 else ph
+        for x, (ie, E) in enumerate(tops):
+            if D - ie > cfg["top_age"] or x == 0:
+                continue
+            i0, E0 = tops[x - 1]
+            if not (E - E0) * -d_ > 0:         # short: E > E0 (yükselen tepe), long: E < E0 (alçalan dip)
+                continue
+            ara = [q for q in bots if i0 < q[0] < ie]
+            if LEVEL_MODE == "son_dip":
+                once = [q for q in bots if q[0] < ie]
+                if len(once) < 2 or once[-1][0] < i0:
+                    continue
+                (iv, lvl), (_, B0) = once[-1], once[-2]
+                if not (lvl - B0) * -d_ > 0:
+                    continue
+            else:
+                iv, lvl = i0, E0
+            b = None
+            for jj in range(ie + 1, D + 1):
+                if (c[jj] - lvl) * d_ > 0:      # short: kapanış seviyenin altında
+                    b = jj
+                    break
+                if (h[jj] if d_ == -1 else l[jj]) * -d_ > E * -d_:   # önce yeni tepe/dip gelirse geçersiz
+                    break
+            if b is None:
+                continue
+            kb = b                              # retest süresi bu mumdan itibaren sayılır
+            if LEVEL_MODE == "birlesik":
+                Bv = ara[-1][1] if ara else (min(l[i0:ie + 1]) if d_ == -1 else max(h[i0:ie + 1]))
+                kb = next((jj for jj in range(ie + 1, D + 1) if (c[jj] - Bv) * d_ > 0), None)
+                if kb is None:
+                    continue
+                kb = max(kb, b)
+            if D - kb > cfg["retest"]:
+                continue
+            if any((c[jj] - lvl) * d_ < 0 for jj in range(b + 1, D + 1)):
+                continue
+            uz = min(l[b:D + 1]) if d_ == -1 else max(h[b:D + 1])
+            if (lvl - uz) * -d_ < MIN_AWAY * a:
+                continue
+            if not vol_ok(d, b):
+                continue
+            # Teyit bilgileri (geçmiş testte filtre olarak denenir)
+            rngb = h[b] - l[b]
+            ab = datr[b] or a
+            guclu = (rngb > 0 and abs(c[b] - o[b]) >= ab and
+                     ((c[b] - l[b]) if d_ == -1 else (h[b] - c[b])) <= 0.3 * rngb and (c[b] - o[b]) * d_ > 0)
+            rsi_div = (rsi[ie] is not None and rsi[i0] is not None and (rsi[ie] - rsi[i0]) * d_ > 0)
+            onceki = [q for q in tops if q[0] < ie and (E - q[1]) * -d_ > 0 and ie - q[0] <= cfg["look"]]
+            supurme = any((c[ie] - q[1]) * d_ > 0 for q in onceki)
+            out.append(dict(dir=d_, level=lvl, key=f"{d_}|{t[iv]}|{t[ie]}", brk=t[b], atr=a,
+                            volr=vol_ratio(d, b), brk_vol=(v[b] if v else None),
+                            flags=dict(guclu=guclu, rsi=rsi_div, supurme=supurme)))
 
     return out, [p for _, p in ph], [p for _, p in pl]
 
@@ -284,7 +344,12 @@ def check_reject(x, j, xatr, st, highs, lows):
     rr2 = abs(tp2 - c) / R
     if rr2 < MIN_RR:
         return None
-    return dict(dir=d, level=L, brk=st["brk"], key=st["key"], entry=c, sl=sl, tp1=c + d * R,
+    if d == 1:
+        hedefler = sorted(p for p in highs if p > c)
+    else:
+        hedefler = sorted((p for p in lows if p < c), reverse=True)
+    return dict(dir=d, level=L, brk=st["brk"], key=st["key"], entry=c, ext=(h if d == -1 else l),
+                volr=st.get("volr"), brk_vol=st.get("brk_vol"), flags=st.get("flags", {}), targets=hedefler, sl=sl, tp1=c + d * R,
                 tp2=tp2, rr2=rr2, tp2_not=tp2_not, stop_pct=stop_pct, t=x["t"][j] + x["sec"])
 
 
