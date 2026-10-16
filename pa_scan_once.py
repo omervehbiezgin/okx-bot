@@ -38,6 +38,7 @@ BASE = "https://www.okx.com"
 STATE_FILE = "pa_state.json"          # mevcut botun state.json dosyasından ayrı
 
 # ---------------- AYARLAR ----------------
+STRUCT_TF = "1D"           # yapı ve kırılım zaman dilimi: "1D" veya "4H"
 REJECT_TF = "1H"           # red mumunun zaman dilimi: "1H", "4H" veya "1D"
 MIN_24H_USDT = 5_000_000   # 24s hacmi bunun altındaki coinler taranmaz
 MAX_SYMBOLS = 80           # hacme göre en fazla kaç coin taransın
@@ -60,7 +61,13 @@ RISK_PCT = 1.0             # mesajdaki pozisyon büyüklüğü önerisi için i�
 REQUEST_PAUSE = 0.1
 # -----------------------------------------
 
-TF = {"1H": ("1H", 3600), "4H": ("4H", 14400), "1D": ("1Dutc", 86400)}
+TF = {"30m": ("30m", 1800), "1H": ("1H", 3600), "4H": ("4H", 14400), "1D": ("1Dutc", 86400)}
+# Yapı zaman dilimine göre ayarlar (mum sayısı olarak):
+#   k: tepe/dip onayı, look: bakılan mum, top_age: kırılan yapı en fazla kaç mum önce, retest: kırılımdan sonra bekleme
+STRUCT = {
+    "1D": dict(k=DAILY_K, look=STRUCT_DAYS, top_age=TOP_MAX_AGE, retest=RETEST_DAYS, ad="günlük"),
+    "4H": dict(k=3, look=180, top_age=90, retest=30, ad="4H"),
+}
 DAY = 86400
 session = requests.Session()
 TR = timezone(timedelta(hours=3))
@@ -172,18 +179,19 @@ def pivots(h, l, a, b, k):
 
 
 def setups_at(d, D, datr):
-    """D gününe kadar (D dahil) kapanmış günlük veriyle aktif kurulumlar."""
+    """D mumuna kadar (D dahil) kapanmış yapı verisiyle aktif kurulumlar."""
+    cfg = STRUCT[STRUCT_TF]
     if D < 40 or datr[D] is None:
         return [], [], []
     h, l, c, t = d["h"], d["l"], d["c"], d["t"]
     a = datr[D]
-    start = max(0, D - STRUCT_DAYS)
-    ph, pl = pivots(h, l, start, D, DAILY_K)
+    start = max(0, D - cfg["look"])
+    ph, pl = pivots(h, l, start, D, cfg["k"])
     out = []
 
     # SHORT: yükselen yapıda son tepeyi oluşturan dip kapanışla kırıldı
     for x, (ih, H) in enumerate(ph):
-        if D - ih > TOP_MAX_AGE or x == 0:
+        if D - ih > cfg["top_age"] or x == 0:
             continue
         H0 = ph[x - 1][1]
         lows = [p for p in pl if p[0] < ih]
@@ -199,7 +207,7 @@ def setups_at(d, D, datr):
                 break
             if h[j] > H:
                 break
-        if b is None or D - b > RETEST_DAYS:
+        if b is None or D - b > cfg["retest"]:
             continue
         if any(c[j] > Lv for j in range(b + 1, D + 1)):
             continue
@@ -209,7 +217,7 @@ def setups_at(d, D, datr):
 
     # LONG: düşen yapıda son dibi oluşturan tepe kapanışla kırıldı
     for x, (il, Lo) in enumerate(pl):
-        if D - il > TOP_MAX_AGE or x == 0:
+        if D - il > cfg["top_age"] or x == 0:
             continue
         L0 = pl[x - 1][1]
         highs = [p for p in ph if p[0] < il]
@@ -225,7 +233,7 @@ def setups_at(d, D, datr):
                 break
             if l[j] < Lo:
                 break
-        if b is None or D - b > RETEST_DAYS:
+        if b is None or D - b > cfg["retest"]:
             continue
         if any(c[j] < Hv for j in range(b + 1, D + 1)):
             continue
@@ -265,7 +273,7 @@ def check_reject(x, j, xatr, st, highs, lows):
     else:
         ileri = sorted((p for p in lows if p < c - 0.2 * R), reverse=True)
     if ileri:
-        tp2, tp2_not = ileri[0], "sıradaki günlük seviye"
+        tp2, tp2_not = ileri[0], "sıradaki yapı seviyesi"
     else:
         tp2, tp2_not = c + d * MIN_RR * R, "seviye yok, 2R"
     rr2 = abs(tp2 - c) / R
@@ -316,7 +324,7 @@ def fmt_signal(g):
     up = g["dir"] == 1
     kir = datetime.fromtimestamp(g["brk"], TR).strftime("%d.%m")
     lines = [
-        f"{'🟢 LONG' if up else '🔴 SHORT'} {short(g['inst'])}  günlük yapı {'yukarı' if up else 'aşağı'} "
+        f"{'🟢 LONG' if up else '🔴 SHORT'} {short(g['inst'])}  {STRUCT[STRUCT_TF]['ad']} yapı {'yukarı' if up else 'aşağı'} "
         f"kırıldı ({kir}), seviye {fp(g['level'])} retestten {REJECT_TF} red",
         f"   Giriş {fp(g['entry'])} | SL {fp(g['sl'])} ({'-' if up else '+'}{g['stop_pct']:.2f}%) | "
         f"TP1 {fp(g['tp1'])} (1R) | TP2 {fp(g['tp2'])} ({g['rr2']:.1f}R, {g['tp2_not']})",
@@ -349,8 +357,8 @@ def save_state(state):
 
 
 def last_day_before(d, t_open):
-    """t_open anına kadar kapanmış son günün indeksi."""
-    return bisect.bisect_right(d["t"], t_open - DAY) - 1
+    """t_open anına kadar kapanmış son yapı mumunun indeksi."""
+    return bisect.bisect_right(d["t"], t_open - d["sec"]) - 1
 
 
 # ---------------- Canlı tarama ----------------
@@ -383,7 +391,7 @@ def live():
     hits, stale = [], 0
     for inst in symbols:
         try:
-            d = fetch(inst, "1Dutc", DAY, 300)
+            d = fetch(inst, TF[STRUCT_TF][0], TF[STRUCT_TF][1], 300)
             time.sleep(REQUEST_PAUSE)
             datr = atr_arr(d)
             D = last_day_before(d, co)
@@ -391,8 +399,8 @@ def live():
             sts = [s for s in sts if f"{inst}|{s['key']}" not in sent]
             if not sts:
                 continue
-            x = d if REJECT_TF == "1D" else fetch(inst, bar, sec, 40)
-            if REJECT_TF != "1D":
+            x = d if REJECT_TF == STRUCT_TF else fetch(inst, bar, sec, 40)
+            if REJECT_TF != STRUCT_TF:
                 time.sleep(REQUEST_PAUSE)
             if not x["t"] or x["t"][-1] != co:
                 stale += 1
@@ -417,7 +425,7 @@ def live():
     if hits:
         a = datetime.fromtimestamp(co, TR)
         b = datetime.fromtimestamp(tc, TR)
-        msg = [f"🎯 [Kırılım-Retest {REJECT_TF}] {len(hits)} sinyal",
+        msg = [f"🎯 [Kırılım-Retest {STRUCT_TF}→{REJECT_TF}] {len(hits)} sinyal",
                f"🕒 Mum (TR saati): {a:%d.%m.%Y %H:%M} → {b:%d.%m %H:%M}"]
         msg += [fmt_signal(g) for g in hits]
         msg.append("ℹ️ Otomatik sinyal, yatırım tavsiyesi değildir.")
@@ -434,7 +442,7 @@ def live():
 
 # ---------------- Geçmişe dönük test (mesaj göndermez) ----------------
 def simulate(g, s1h):
-    """1H mumlarla: TP1'de yarısı kapanır ve stop girişe çekilir. Sonuç R cinsinden."""
+    """Küçük zaman dilimi mumlarıyla: TP1'de yarısı kapanır ve stop girişe çekilir. Sonuç R cinsinden."""
     d, e, sl, tp1, tp2 = g["dir"], g["entry"], g["sl"], g["tp1"], g["tp2"]
     R = abs(e - sl)
     half = False
@@ -459,11 +467,18 @@ def simulate(g, s1h):
 
 
 def run_bt(data, tf, t_from):
-    sec = TF[tf][1]
     sigs = []
-    for inst, (d, s1h) in data.items():
+    for inst, (d1, s30) in data.items():
+        d = d1 if STRUCT_TF == "1D" else aggregate(s30, TF[STRUCT_TF][1])
         datr = atr_arr(d)
-        x = d if tf == "1D" else (s1h if tf == "1H" else aggregate(s1h, 14400))
+        if tf == STRUCT_TF:
+            x = d
+        elif tf == "1D":
+            x = d1
+        elif tf == "30m":
+            x = s30
+        else:
+            x = aggregate(s30, TF[tf][1])
         xatr = atr_arr(x)
         used, cache = set(), {}
         for j in range(len(x["t"])):
@@ -480,7 +495,7 @@ def run_bt(data, tf, t_from):
                 if g:
                     used.add(st["key"])
                     g["inst"] = inst
-                    g["R"], g["sonuc"] = simulate(g, s1h)
+                    g["R"], g["sonuc"] = simulate(g, s30)
                     sigs.append(g)
     sigs.sort(key=lambda g: g["t"])
     return sigs
@@ -498,10 +513,12 @@ def ozet(sigs):
 
 
 BT_VARIANTS = [
-    ("mevcut ayarlar (red 1H)", "1H", {}),
-    ("red 4H", "4H", {}),
-    ("geniş temas toleransı 0.25", "1H", dict(TOUCH_TOL=0.25)),
-    ("uzaklaşma 1.0", "1H", dict(MIN_AWAY=1.0)),
+    ("yapı 1D → red 1H (mevcut)", "1D", "1H", {}),
+    ("yapı 1D → red 30m", "1D", "30m", {}),
+    ("yapı 4H → red 1H", "4H", "1H", {}),
+    ("yapı 4H → red 30m", "4H", "30m", {}),
+    ("yapı 4H → red 1H, temas 0.25", "4H", "1H", dict(TOUCH_TOL=0.25)),
+    ("yapı 4H → red 30m, temas 0.25", "4H", "30m", dict(TOUCH_TOL=0.25)),
 ]
 
 
@@ -515,16 +532,18 @@ def backtest(days):
     for inst in symbols:
         try:
             data[inst] = (fetch(inst, "1Dutc", DAY, days + STRUCT_DAYS + 20),
-                          fetch(inst, "1H", 3600, days * 24 + 48))
+                          fetch(inst, "30m", 1800, (days + 35) * 48))
         except Exception as e:
             print(f"{inst} hata: {e}")
         time.sleep(REQUEST_PAUSE)
+    print(f"Veri alındı: {len(data)} coin.", flush=True)
 
-    keys = ("MIN_AWAY", "WICK_MIN", "MAX_PIERCE", "MIN_RR", "TOUCH_TOL")
+    keys = ("MIN_AWAY", "WICK_MIN", "MAX_PIERCE", "MIN_RR", "TOUCH_TOL", "STRUCT_TF")
     g0 = {k: globals()[k] for k in keys}
-    for ad, tf, ayar in BT_VARIANTS:
+    for ad, stf, tf, ayar in BT_VARIANTS:
         globals().update(g0)
         globals().update(ayar)
+        globals()["STRUCT_TF"] = stf
         sigs = run_bt(data, tf, t_from)
         print(f"\n===== {ad} =====")
         for g in sigs:

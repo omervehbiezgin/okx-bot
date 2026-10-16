@@ -4,6 +4,8 @@ name: PA Gecmis Test
 # durum dosyasına dokunmaz. Sonuç, çalışmanın özet sayfasında ve log'da görünür.
 
 on:
+  push:
+    branches: [pa-strateji]
   workflow_dispatch:
     inputs:
       gun:
@@ -16,7 +18,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
