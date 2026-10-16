@@ -1,0 +1,30 @@
+name: PA Gecmis Test
+
+# Son birkaç günü geçmişe dönük test eder. Telegram'a MESAJ GÖNDERMEZ (secret verilmez),
+# durum dosyasına dokunmaz. Sonuç, çalışmanın özet sayfasında ve log'da görünür.
+
+on:
+  workflow_dispatch:
+    inputs:
+      gun:
+        description: "Kaç gün geriye test edilsin (1-6)"
+        default: "5"
+  push:
+    branches: [pa-strateji]
+
+concurrency:
+  group: okx-pa-test
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - run: python pa_scan_once.py
+        env:
+          PA_BACKTEST: ${{ inputs.gun || '5' }}
