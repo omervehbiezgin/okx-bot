@@ -1,0 +1,302 @@
+//@version=6
+// Kırılım-Retest PA: okx-bot'taki pa_scan_once.py ile aynı kurallar.
+// Günlükte yapı kırılımı (günlük KAPANIŞLA) -> kırılan seviyeye retest -> grafiğin zaman diliminde red mumu.
+// Önerilen grafik: 1 saat (botun varsayılanı). Sinyalde Alış/Satış Pozisyonu benzeri kutu çizer.
+indicator("Kırılım-Retest PA", shorttitle = "KR-PA", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ---------------- Ayarlar ----------------
+grpY = "Günlük yapı"
+K          = input.int(3, "Tepe/dip onayı (gün)", minval = 1, group = grpY)
+topMaxAge  = input.int(60, "Kırılan yapı en fazla kaç günlük", group = grpY)
+retestDays = input.int(20, "Kırılımdan sonra retest için en fazla gün", group = grpY)
+minAway    = input.float(0.5, "Retestten önce uzaklaşma (günlük ATR x)", step = 0.1, group = grpY)
+
+grpR = "Red mumu"
+touchTol  = input.float(0.15, "Seviyeye değme toleransı (günlük ATR x)", step = 0.05, group = grpR)
+maxPierce = input.float(0.5, "Seviyeyi en fazla aşma (günlük ATR x)", step = 0.05, group = grpR)
+wickMin   = input.float(0.3, "Ret fitili en az (mum boyu x)", step = 0.05, group = grpR)
+closeHalf = input.float(0.5, "Kapanış mumun alt/üst kısmında (mum boyu x)", step = 0.05, group = grpR)
+minRange  = input.float(0.5, "Mum boyu en az (ATR x)", step = 0.1, group = grpR)
+
+grpS = "Stop / hedef"
+slBuf   = input.float(0.1, "Stop tamponu (ATR x)", step = 0.05, group = grpS)
+minStop = input.float(0.3, "Stop en az %", step = 0.1, group = grpS)
+maxStop = input.float(8.0, "Stop en fazla %", step = 0.5, group = grpS)
+minRR   = input.float(2.0, "TP2 en az R", step = 0.5, group = grpS)
+riskPct = input.float(1.0, "İşlem başı risk % (pozisyon önerisi)", step = 0.5, group = grpS)
+
+grpG = "Görünüm"
+boxLen    = input.int(30, "Pozisyon kutusu uzunluğu (mum)", minval = 5, group = grpG)
+showLevel = input.bool(true, "Aktif kırılım seviyelerini çiz", group = grpG)
+
+// ---------------- Yardımcı: seviyeye en yakın 4 tepe/dip ----------------
+nearest4(array<float> arr, float ref, bool above) =>
+    float a1 = na
+    float a2 = na
+    float a3 = na
+    float a4 = na
+    if not na(ref) and array.size(arr) > 0
+        vals = array.new<float>()
+        for v in arr
+            if (above and v > ref) or (not above and v < ref)
+                array.push(vals, v)
+        array.sort(vals, above ? order.ascending : order.descending)
+        n = array.size(vals)
+        a1 := n > 0 ? array.get(vals, 0) : na
+        a2 := n > 1 ? array.get(vals, 1) : na
+        a3 := n > 2 ? array.get(vals, 2) : na
+        a4 := n > 3 ? array.get(vals, 3) : na
+    [a1, a2, a3, a4]
+
+// ---------------- Günlük yapı (günlük grafikte çalışır) ----------------
+dailyState() =>
+    atrD = ta.sma(ta.tr(true), 14)
+    phv = ta.pivothigh(high, K, K)
+    plv = ta.pivotlow(low, K, K)
+
+    var float pH1 = na
+    var int   pH1i = na
+    var int   pH1t = na
+    var float pH0 = na
+    var float pL1 = na
+    var int   pL1i = na
+    var int   pL1t = na
+    var float pL0 = na
+    var array<float> lowsArr = array.new<float>()
+    var array<float> highsArr = array.new<float>()
+
+    // short: bekleyen aday ve aktif kurulum
+    var float sArmLvl = na
+    var int   sArmKey = na
+    var float sArmTop = na
+    var int   sArmTopI = na
+    var float sLvl = na
+    var int   sKey = na
+    var int   sBrkI = na
+    var int   sBrkT = na
+    var int   sTopI = na
+    var float sMin = na
+    // long
+    var float lArmLvl = na
+    var int   lArmKey = na
+    var float lArmBot = na
+    var int   lArmBotI = na
+    var float lLvl = na
+    var int   lKey = na
+    var int   lBrkI = na
+    var int   lBrkT = na
+    var int   lBotI = na
+    var float lMax = na
+
+    // 1) Aktif kurulumların bakımı: seviyenin öbür tarafında kapanış veya süre dolması iptal eder
+    if not na(sLvl)
+        sMin := math.min(sMin, low)
+        if close > sLvl or bar_index - sBrkI > retestDays or bar_index - sTopI > topMaxAge
+            sLvl := na
+    if not na(lLvl)
+        lMax := math.max(lMax, high)
+        if close < lLvl or bar_index - lBrkI > retestDays or bar_index - lBotI > topMaxAge
+            lLvl := na
+
+    // 2) Bekleyen adaylar: kapanışla kırılırsa aktif olur, önce yeni tepe/dip gelirse iptal
+    if not na(sArmLvl)
+        if close < sArmLvl
+            sLvl := sArmLvl
+            sKey := sArmKey
+            sBrkI := bar_index
+            sBrkT := time
+            sTopI := sArmTopI
+            sMin := low
+            sArmLvl := na
+        else if high > sArmTop or bar_index - sArmTopI > topMaxAge
+            sArmLvl := na
+    if not na(lArmLvl)
+        if close > lArmLvl
+            lLvl := lArmLvl
+            lKey := lArmKey
+            lBrkI := bar_index
+            lBrkT := time
+            lBotI := lArmBotI
+            lMax := high
+            lArmLvl := na
+        else if low < lArmBot or bar_index - lArmBotI > topMaxAge
+            lArmLvl := na
+
+    // 3) Yeni tepe: yükselen yapıda (HH-HL) son tepeyi oluşturan dip -> short seviyesi
+    if not na(phv) and not na(pH1) and not na(pL1) and not na(pL0)
+        ih = bar_index - K
+        if phv > pH1 and pL1i > pH1i and pL1 > pL0
+            st = 0
+            bi = 0
+            for k = K - 1 to 0
+                if close[k] < pL1
+                    st := 1
+                    bi := k
+                    break
+                if high[k] > phv
+                    st := 2
+                    break
+            if st == 1
+                float m = low[bi]
+                bool bozuk = false
+                for k = bi to 0
+                    m := math.min(m, low[k])
+                    if k < bi and close[k] > pL1
+                        bozuk := true
+                if not bozuk
+                    sLvl := pL1
+                    sKey := pL1t
+                    sBrkI := bar_index - bi
+                    sBrkT := time[bi]
+                    sTopI := ih
+                    sMin := m
+            else if st == 0
+                sArmLvl := pL1
+                sArmKey := pL1t
+                sArmTop := phv
+                sArmTopI := ih
+
+    // 4) Yeni dip: düşen yapıda (LH-LL) son dibi oluşturan tepe -> long seviyesi
+    if not na(plv) and not na(pL1) and not na(pH1) and not na(pH0)
+        il = bar_index - K
+        if plv < pL1 and pH1i > pL1i and pH1 < pH0
+            st = 0
+            bi = 0
+            for k = K - 1 to 0
+                if close[k] > pH1
+                    st := 1
+                    bi := k
+                    break
+                if low[k] < plv
+                    st := 2
+                    break
+            if st == 1
+                float m = high[bi]
+                bool bozuk = false
+                for k = bi to 0
+                    m := math.max(m, high[k])
+                    if k < bi and close[k] < pH1
+                        bozuk := true
+                if not bozuk
+                    lLvl := pH1
+                    lKey := pH1t
+                    lBrkI := bar_index - bi
+                    lBrkT := time[bi]
+                    lBotI := il
+                    lMax := m
+            else if st == 0
+                lArmLvl := pH1
+                lArmKey := pH1t
+                lArmBot := plv
+                lArmBotI := il
+
+    // 5) Tepe/dip listelerini güncelle (kontrollerden sonra)
+    if not na(phv)
+        pH0 := pH1
+        pH1 := phv
+        pH1i := bar_index - K
+        pH1t := time[K]
+        array.push(highsArr, phv)
+        if array.size(highsArr) > 40
+            array.shift(highsArr)
+    if not na(plv)
+        pL0 := pL1
+        pL1 := plv
+        pL1i := bar_index - K
+        pL1t := time[K]
+        array.push(lowsArr, plv)
+        if array.size(lowsArr) > 40
+            array.shift(lowsArr)
+
+    sOk = not na(sLvl) and sMin <= sLvl - minAway * atrD
+    lOk = not na(lLvl) and lMax >= lLvl + minAway * atrD
+    [s1, s2, s3, s4] = nearest4(lowsArr, sLvl, false)
+    [u1, u2, u3, u4] = nearest4(highsArr, lLvl, true)
+    // [1]: sadece kapanmış günlerin bilgisi kullanılır (yeniden çizmez)
+    [sOk[1], sLvl[1], sKey[1], sBrkT[1], lOk[1], lLvl[1], lKey[1], lBrkT[1], atrD[1], s1[1], s2[1], s3[1], s4[1], u1[1], u2[1], u3[1], u4[1]]
+
+[sOk, sLvl, sKey, sBrkT, lOk, lLvl, lKey, lBrkT, atrD, s1, s2, s3, s4, u1, u2, u3, u4] = request.security(syminfo.tickerid, "D", dailyState(), lookahead = barmerge.lookahead_on)
+
+// ---------------- Red mumu (grafiğin zaman dilimi) ----------------
+atrX = ta.sma(ta.tr(true), 14)
+rng = high - low
+
+pickTP(bool isLong, float entry, float R, float a1, float a2, float a3, float a4) =>
+    float tp = na
+    th = 0.2 * R
+    for v in array.from(a1, a2, a3, a4)
+        if na(tp) and not na(v)
+            if (isLong and v > entry + th) or (not isLong and v < entry - th)
+                tp := v
+    tp
+
+drawPosition(bool isLong, float entry, float sl, float tp1, float tp2, float rr2, float stopPct, string tpNote, float lvl, int brkT) =>
+    x1 = bar_index
+    x2 = bar_index + boxLen
+    green = color.new(color.teal, 80)
+    red = color.new(color.red, 80)
+    box.new(x1, math.max(entry, tp2), x2, math.min(entry, tp2), border_color = color.teal, bgcolor = green)
+    box.new(x1, math.max(entry, sl), x2, math.min(entry, sl), border_color = color.red, bgcolor = red)
+    line.new(x1, entry, x2, entry, color = color.gray, width = 2)
+    line.new(x1, tp1, x2, tp1, color = color.teal, style = line.style_dashed)
+    fmt = format.mintick
+    label.new(x2, tp2, "TP2 " + str.tostring(tp2, fmt) + " (" + str.tostring(rr2, "#.0") + "R" + tpNote + ")", style = label.style_label_left, color = color.teal, textcolor = color.white, size = size.small)
+    label.new(x2, tp1, "TP1 " + str.tostring(tp1, fmt) + " (1R)", style = label.style_label_left, color = color.new(color.teal, 30), textcolor = color.white, size = size.small)
+    label.new(x2, entry, "Giriş " + str.tostring(entry, fmt), style = label.style_label_left, color = color.gray, textcolor = color.white, size = size.small)
+    label.new(x2, sl, "SL " + str.tostring(sl, fmt) + " (" + str.tostring(stopPct, "#.00") + "%)", style = label.style_label_left, color = color.red, textcolor = color.white, size = size.small)
+    posX = riskPct / stopPct
+    tip = (isLong ? "LONG" : "SHORT") + "\nGünlük yapı kırıldı " + str.format_time(brkT, "dd.MM", "UTC+3") + "\nSeviye " + str.tostring(lvl, fmt) + "\n%" + str.tostring(riskPct) + " risk → bakiye × " + str.tostring(posX, "#.00")
+    label.new(x1, isLong ? low : high, isLong ? "▲ LONG" : "▼ SHORT", style = isLong ? label.style_label_up : label.style_label_down, color = isLong ? color.teal : color.red, textcolor = color.white, size = size.normal, tooltip = tip)
+
+var int usedS = na
+var int usedL = na
+newS = false
+newL = false
+
+// SHORT red: seviyeye alttan değip altında, mumun alt kısmında, belirgin üst fitille kapanış
+if barstate.isconfirmed and sOk and (na(usedS) or sKey != usedS) and rng > 0 and rng >= minRange * atrX
+    if high >= sLvl - touchTol * atrD and high <= sLvl + maxPierce * atrD and close < sLvl and high - math.max(open, close) >= wickMin * rng and close - low <= closeHalf * rng
+        entry = close
+        sl = high + slBuf * atrX
+        R = sl - entry
+        stopPct = R / entry * 100
+        if R > 0 and stopPct >= minStop and stopPct <= maxStop
+            tpLvl = pickTP(false, entry, R, s1, s2, s3, s4)
+            tp2 = na(tpLvl) ? entry - minRR * R : tpLvl
+            rr2 = (entry - tp2) / R
+            if rr2 >= minRR
+                usedS := sKey
+                newS := true
+                tp1 = entry - R
+                drawPosition(false, entry, sl, tp1, tp2, rr2, stopPct, na(tpLvl) ? ", seviye yok" : "", sLvl, sBrkT)
+                alert("🔴 SHORT " + syminfo.ticker + " | Giriş " + str.tostring(entry, format.mintick) + " | SL " + str.tostring(sl, format.mintick) + " | TP1 " + str.tostring(tp1, format.mintick) + " | TP2 " + str.tostring(tp2, format.mintick) + " (" + str.tostring(rr2, "#.0") + "R)", alert.freq_once_per_bar_close)
+
+// LONG red: seviyeye üstten değip üstünde, mumun üst kısmında, belirgin alt fitille kapanış
+if barstate.isconfirmed and lOk and (na(usedL) or lKey != usedL) and rng > 0 and rng >= minRange * atrX
+    if low <= lLvl + touchTol * atrD and low >= lLvl - maxPierce * atrD and close > lLvl and math.min(open, close) - low >= wickMin * rng and high - close <= closeHalf * rng
+        entry = close
+        sl = low - slBuf * atrX
+        R = entry - sl
+        stopPct = R / entry * 100
+        if R > 0 and stopPct >= minStop and stopPct <= maxStop
+            tpLvl = pickTP(true, entry, R, u1, u2, u3, u4)
+            tp2 = na(tpLvl) ? entry + minRR * R : tpLvl
+            rr2 = (tp2 - entry) / R
+            if rr2 >= minRR
+                usedL := lKey
+                newL := true
+                tp1 = entry + R
+                drawPosition(true, entry, sl, tp1, tp2, rr2, stopPct, na(tpLvl) ? ", seviye yok" : "", lLvl, lBrkT)
+                alert("🟢 LONG " + syminfo.ticker + " | Giriş " + str.tostring(entry, format.mintick) + " | SL " + str.tostring(sl, format.mintick) + " | TP1 " + str.tostring(tp1, format.mintick) + " | TP2 " + str.tostring(tp2, format.mintick) + " (" + str.tostring(rr2, "#.0") + "R)", alert.freq_once_per_bar_close)
+
+// Aktif kırılım seviyeleri (retest beklenen seviyeler)
+plot(showLevel and sOk ? sLvl : na, "Short seviyesi", color = color.new(color.red, 30), style = plot.style_linebr, linewidth = 2)
+plot(showLevel and lOk ? lLvl : na, "Long seviyesi", color = color.new(color.teal, 30), style = plot.style_linebr, linewidth = 2)
+
+alertcondition(newS, "Kırılım-Retest SHORT", "SHORT sinyali: {{ticker}} {{close}}")
+alertcondition(newL, "Kırılım-Retest LONG", "LONG sinyali: {{ticker}} {{close}}")
+
+// Zaman dilimi uyarısı
+var table tb = table.new(position.top_right, 1, 1)
+if barstate.islast and timeframe.in_seconds() != 3600
+    table.cell(tb, 0, 0, "KR-PA: bot 1 saatlik red mumuna göre çalışıyor.\nAynı sinyaller için grafiği 1 saate al.", text_color = color.white, bgcolor = color.new(color.orange, 20), text_size = size.small)
