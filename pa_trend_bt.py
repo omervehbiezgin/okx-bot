@@ -78,45 +78,63 @@ def save():
 
 # ---------------- Veri ----------------
 def fetch_retry(inst, n):
-    for d in range(5):
+    for d in range(8):
         try:
             return p.fetch(inst, "1H", 3600, n)
         except Exception as e:
             print(f"{inst} deneme {d + 1}: {e}", flush=True)
-            time.sleep(2 + 2 * d)
+            time.sleep(3 + 4 * d)
     return None
 
 
+FETCH_NOTE = []
+
+
 def load():
+    data, created = {}, time.time()
     try:
         with gzip.open(CACHE, "rt") as f:
             c = json.load(f)
-        if time.time() - c["created"] < 3 * 86400 and len(c["data"]) > 20:
-            print(f"Önbellekte {len(c['data'])} coin.", flush=True)
-            return c["data"], c["created"]
+        if time.time() - c["created"] < 3 * 86400:
+            data, created = c["data"], c["created"]
+            print(f"Önbellekte {len(data)} coin.", flush=True)
     except Exception:
         pass
-    syms = p.get_symbols()
+    try:
+        syms = p.get_symbols()
+    except Exception as e:
+        if len(data) > 20 and "BTC-USDT-SWAP" in data:
+            print("Coin listesi alınamadı, önbellekle devam:", e, flush=True)
+            return data, created
+        raise
     if "BTC-USDT-SWAP" not in syms:
         syms.insert(0, "BTC-USDT-SWAP")
+    eksik = [s_ for s_ in syms if s_ not in data]
     n = (DAYS + WARM) * 24
-    created = time.time()
-    print(f"{len(syms)} coin için {n} adet 1H mum çekiliyor...", flush=True)
+    if eksik:
+        print(f"{len(eksik)} coin için {n} adet 1H mum çekiliyor...", flush=True)
 
-    def one(inst):
-        s = fetch_retry(inst, n)
-        time.sleep(0.3)
-        return inst, s
+        def one(inst):
+            s_ = fetch_retry(inst, n)
+            time.sleep(0.5)
+            return inst, s_
 
-    data = {}
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        for inst, s in ex.map(one, syms):
-            if s and len(s["t"]) > 24 * 90:
-                j = bisect.bisect_right(s["t"], created)
-                data[inst] = {k: (v[:j] if isinstance(v, list) else v) for k, v in s.items()}
-    print(f"Veri hazır: {len(data)} coin.", flush=True)
-    with gzip.open(CACHE, "wt") as f:
-        json.dump({"created": created, "data": data}, f)
+        alinamayan, kisa = [], []
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            for inst, s_ in ex.map(one, eksik):
+                if s_ is None:
+                    alinamayan.append(inst)
+                elif len(s_["t"]) <= 24 * 90:
+                    kisa.append(inst)
+                else:
+                    j_ = bisect.bisect_right(s_["t"], created)
+                    data[inst] = {k: (v[:j_] if isinstance(v, list) else v) for k, v in s_.items()}
+        FETCH_NOTE.append(f"Veri: {len(data)} coin; alınamayan {len(alinamayan)}, 90 günden kısa geçmişli {len(kisa)}.")
+        print(FETCH_NOTE[-1], flush=True)
+        with gzip.open(CACHE, "wt") as f:
+            json.dump({"created": created, "data": data}, f)
+    if "BTC-USDT-SWAP" not in data:
+        raise RuntimeError("BTC verisi alınamadı (OKX istek sınırı olabilir); tekrar çalıştırın.")
     return data, created
 
 
@@ -413,22 +431,15 @@ HEAD = ("| Ayar | Eğitim: işlem / kazanan / net R | Doğrulama: işlem / kazan
         "|---|---|---|---|---|---|---|---|---|---|")
 
 
-def main():
+def run_grid(coins, btc, t_start, t_split, etiket=""):
+    """Tüm ayarlar: [(anahtar, filtre, eğitim, doğrulama, toplam, işlemler)]"""
     T0 = time.time()
-    data, created = load()
-    t_start = created - DAYS * 86400
-    t_split = created - TEST_DAYS * 86400
-    coins = {k: Coin(k, v) for k, v in data.items()}
-    btc = Btc(coins["BTC-USDT-SWAP"])
-    print(f"Hazırlık {time.time() - T0:.0f} sn", flush=True)
-
-    # Tüm sonuçları hesapla: (stf, entry, sk, exit) -> [(olay, sonuç)]
     R = {}
     for stf in STFS:
         evs = []
         for c in coins.values():
             evs += [e for e in events(c, stf, btc) if e["t"] >= t_start]
-        print(f"{stf}: {len(evs)} kurulum", flush=True)
+        print(f"{etiket}{stf}: {len(evs)} kurulum", flush=True)
         for entry in ENTRIES:
             for sk in SKS:
                 fills = [(ev, fill(ev, coins[ev["inst"]], entry, sk)) for ev in evs]
@@ -440,8 +451,7 @@ def main():
                         if r:
                             res.append((ev, r))
                     R[(stf, entry, sk, ex)] = res
-        print(f"{stf} simülasyon bitti ({time.time() - T0:.0f} sn)", flush=True)
-
+        print(f"{etiket}{stf} simülasyon bitti ({time.time() - T0:.0f} sn)", flush=True)
     tr_days, te_days = DAYS - TEST_DAYS, TEST_DAYS
     rows = []
     for key, res in R.items():
@@ -450,6 +460,39 @@ def main():
             tr = [r for r in rs if r["t_in"] < t_split]
             te = [r for r in rs if r["t_in"] >= t_split]
             rows.append((key, fad, stats(tr, tr_days), stats(te, te_days), stats(rs, DAYS), rs))
+    return rows
+
+
+def shuffled(data, seed=7):
+    """Her coinin 1H mumlarını (önceki kapanışa göre oranlarıyla) karıştırır: oynaklık aynı kalır,
+    trend ve ardışıklık yok olur. Şans seviyesini ölçmek için."""
+    rng = np.random.default_rng(seed)
+    outd = {}
+    for k, s in data.items():
+        c = np.array(s["c"])
+        prev = np.concatenate(([s["o"][0]], c[:-1]))
+        ro, rh = np.array(s["o"]) / prev, np.array(s["h"]) / prev
+        rl, rc = np.array(s["l"]) / prev, c / prev
+        idx = rng.permutation(len(c))
+        ro, rh, rl, rc = ro[idx], rh[idx], rl[idx], rc[idx]
+        pc = s["o"][0] * np.cumprod(rc)
+        pprev = np.concatenate(([s["o"][0]], pc[:-1]))
+        outd[k] = dict(t=s["t"], o=list(pprev * ro), h=list(pprev * rh), l=list(pprev * rl), c=list(pc),
+                       v=list(np.array(s["v"])[idx]), sec=s["sec"])
+    return outd
+
+
+def main():
+    T0 = time.time()
+    data, created = load()
+    t_start = created - DAYS * 86400
+    t_split = created - TEST_DAYS * 86400
+    coins = {k: Coin(k, v) for k, v in data.items()}
+    btc = Btc(coins["BTC-USDT-SWAP"])
+    print(f"Hazırlık {time.time() - T0:.0f} sn", flush=True)
+
+    rows = run_grid(coins, btc, t_start, t_split)
+    tr_days, te_days = DAYS - TEST_DAYS, TEST_DAYS
 
     def ad(key, fad):
         stf, entry, sk, ex = key
@@ -464,7 +507,9 @@ def main():
     out(f"Tarih: {datetime.fromtimestamp(created, TR):%d.%m.%Y %H:%M} (TR). {len(coins)} coin. "
         f"**Eğitim ilk {tr_days} gün, doğrulama son {te_days} gün.** Seçimler sadece eğitime göre. "
         f"Komisyon maker %{MAKER} / taker %{TAKER}; long için funding 8 saatte %{FUND_8H}. "
-        f"\"Kazanan\": kârla kapanan işlem oranı. Portföy sütunu: coin başına 1, aynı anda en fazla 5 pozisyon.")
+        f"\"Kazanan\": kârla kapanan işlem oranı. Portföy sütunu: coin başına 1, aynı anda en fazla 5 pozisyon. "
+        f"Toplam {len(STFS) * len(ENTRIES) * len(SKS) * len(EXITS) * len(FILTERS)} ayar denendi: en iyisi şans eseri iyi "
+        f"görünebilir, asıl ölçü doğrulama sütunudur. " + " ".join(FETCH_NOTE))
     out()
     elig = [r for r in rows if r[2]["n"] >= 40]
     elig.sort(key=lambda r: r[2]["net"], reverse=True)
@@ -528,6 +573,25 @@ def main():
         for r in rs:
             sonuc[r["sonuc"]] += 1
         out("- Çıkış türleri: " + ", ".join(f"{k} {v}" for k, v in sonuc.items()))
+    save()
+
+    # Şans seviyesi: aynı test, mumları karıştırılmış (trendi bozulmuş) veriyle
+    sh = {k: Coin(k, v) for k, v in shuffled(data).items()}
+    rows2 = run_grid(sh, Btc(sh["BTC-USDT-SWAP"]), t_start, t_split, "[karışık] ")
+    el2 = sorted([r for r in rows2 if r[2]["n"] >= 40], key=lambda r: r[2]["net"], reverse=True)
+    out()
+    out("## 6) Şans seviyesi kontrolü")
+    out("Aynı 600 ayar, her coinin mumları rastgele karıştırılmış veriyle (oynaklık aynı, trend yok) denendi. "
+        "Gerçek veride sonuç bunun belirgin şekilde üstünde değilse şans eseri sayılmalı.")
+    out(HEAD)
+    if el2:
+        out(line(el2[0]).replace("| ", "| [karışık veri, eğitimde en iyi] ", 1))
+    for nm, rr in (("gerçek veri", elig), ("karışık veri", el2)):
+        if rr:
+            top = rr[:25]
+            out(f"- {nm}: eğitimde en iyi 25 ayarın doğrulama ortalaması "
+                f"{sum(r[3]['net'] for r in top) / len(top):+.1f}R, tüm ayarların doğrulama ortalaması "
+                f"{sum(r[3]['net'] for r in rr) / len(rr):+.1f}R")
     out()
     out(f"Süre: {(time.time() - T0) / 60:.0f} dk")
     save()
