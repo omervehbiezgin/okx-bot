@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "auto / daily / hourly / test"
+        description: "auto / daily / hourly / test / closeall (tüm pozisyonları kapatır)"
         default: "auto"
 
 permissions:
@@ -43,8 +43,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: bot_state.json
-          key: pa-bot-state-${{ github.run_id }}
-          restore-keys: pa-bot-state-
+          key: pa-bot-state-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            pa-bot-state-${{ github.ref_name }}-
+            pa-bot-state-
       - run: pip install requests
       - name: Botu calistir
         env:
@@ -52,9 +54,10 @@ jobs:
           # Ayrı Telegram botu: PA_TG_TOKEN (ve isterseniz PA_TG_CHAT_ID) tanımlıysa o kullanılır, yoksa eski bot
           TG_TOKEN: ${{ github.event_name != 'push' && (secrets.PA_TG_TOKEN || secrets.TG_TOKEN) || '' }}
           TG_CHAT_ID: ${{ github.event_name != 'push' && (secrets.PA_TG_CHAT_ID || secrets.TG_CHAT_ID) || '' }}
-          OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
-          OKX_API_SECRET: ${{ secrets.OKX_API_SECRET }}
-          OKX_API_PASSPHRASE: ${{ secrets.OKX_API_PASSPHRASE }}
+          # push ile yapılan test çalışmaları OKX anahtarını da ALMAZ: her zaman kuru çalışmadır, asla emir gönderemez
+          OKX_API_KEY: ${{ github.event_name != 'push' && secrets.OKX_API_KEY || '' }}
+          OKX_API_SECRET: ${{ github.event_name != 'push' && secrets.OKX_API_SECRET || '' }}
+          OKX_API_PASSPHRASE: ${{ github.event_name != 'push' && secrets.OKX_API_PASSPHRASE || '' }}
           # Şimdilik varsayılan: OKX DEMO hesabında emir gönderir (sanal para). Gerçek hesaba geçerken PA_DEMO '0' yapılır.
           PA_LIVE: ${{ vars.PA_LIVE || '1' }}
           PA_DEMO: ${{ vars.PA_DEMO || '1' }}
@@ -85,4 +88,4 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: bot_state.json
-          key: pa-bot-state-${{ github.run_id }}
+          key: pa-bot-state-${{ github.ref_name }}-${{ github.run_id }}
