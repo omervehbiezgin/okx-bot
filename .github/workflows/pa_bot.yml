@@ -16,7 +16,7 @@ on:
     - cron: "34 * * * *"
   push:
     branches: [pa-strateji]
-    paths: [pa_bot.py]
+    paths: [pa_bot.py, .github/workflows/pa_bot.yml]
   workflow_dispatch:
     inputs:
       mode:
