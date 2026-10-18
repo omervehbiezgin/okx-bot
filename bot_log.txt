@@ -1,0 +1,31 @@
+Mod: daily · anahtar: yok · canlı: False · demo: False
+🌅 Trend botu — günlük çalışma (KURU ÇALIŞMA) · 17.10.2026 günlük mumu
+💰 Bakiye: 100.00 USDT (başlangıç 100.00)
+🔎 73 coin tarandı, 10 sinyal. Açık/bekleyen: 8/8
+• 🔴 SHORT ETH: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT SUI: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ENA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ADA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT LINK: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT XPL: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ONDO: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT PENGU: zaten pozisyon/emir var, atlandı
+• 🟢 LONG A: yer yok (8 pozisyon dolu), atlandı
+• 🔴 SHORT DASH: yer yok (8 pozisyon dolu), atlandı
+📊 [KURU] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
+🌅 Trend botu — günlük çalışma (KURU ÇALIŞMA) · 17.10.2026 günlük mumu
+💰 Bakiye: 100.00 USDT (başlangıç 100.00)
+🔎 73 coin tarandı, 10 sinyal. Açık/bekleyen: 8/8
+• 🔴 SHORT ETH: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT SUI: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ENA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ADA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT LINK: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT XPL: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ONDO: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT PENGU: zaten pozisyon/emir var, atlandı
+• 🟢 LONG A: yer yok (8 pozisyon dolu), atlandı
+• 🔴 SHORT DASH: yer yok (8 pozisyon dolu), atlandı
+📊 [KURU] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
+ℹ️ Otomatik işlem botu, yatırım tavsiyesi değildir.
+
