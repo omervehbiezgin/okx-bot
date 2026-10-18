@@ -8,7 +8,7 @@ Aşamalar (her aşamada seçim SADECE eğitim dönemine göre; son TEST_DAYS gü
   A) Giriş saati: kapanışta (03:00 TR, Tokyo açılışı), +1, +2 (Hong Kong/Şangay), +5, +7/+8 (Londra yaz/kış),
      +9, +13/+14 (New York), kademeli 03/08/13 ve oturumlara göre kademeli (Asya/Avrupa/ABD)
   B) Çıkış × BTC filtresi: TP 5R | TP 5R + 2R'de stop girişe | günlük stop 10/20 gün dibi | günlük stop + 2R'de
-     stop girişe | yarısı 3R + kalanı günlük stop. BTC filtresi açık/kapalı.
+     stop girişe | yarısı 3R + kalanı günlük stop | OKX iz süren stop 2/3 × ATR (sürekli). BTC filtresi açık/kapalı.
   C) Portföy ve risk: (risk, en fazla pozisyon) × düşüşte riski yarıya indirme (zirveden %15+). Acil fren: bakiye
      60 USDT altına inerse yeni işlem açılmaz.
   D) Günlük mumun kapanış saati: 03:00 / 09:00 / 15:00 / 21:00 TR ve dördü birlikte.
@@ -206,6 +206,21 @@ def sim(ev, coin, f, ex):
             eff = np.maximum.accumulate(np.maximum(stop, np.nan_to_num(lo[a:b], nan=-np.inf)))
         else:
             eff = np.minimum.accumulate(np.minimum(stop, np.nan_to_num(hi[a:b], nan=np.inf)))
+    if ex.startswith("tr"):                 # OKX iz süren stop: zirveden (dipten) m × günlük ATR geri çekilince kapanır
+        m = float(ex[2])
+        cb = m * ev["atr"]
+        if d == 1:
+            peak = np.maximum.accumulate(np.concatenate(([e], coin.h[a:b])))[:-1]
+            tr = peak - cb
+            if ex.endswith("a"):
+                tr = np.where(peak >= e + R, tr, -np.inf)
+            eff = np.maximum(eff, tr)
+        else:
+            peak = np.minimum.accumulate(np.concatenate(([e], coin.l[a:b])))[:-1]
+            tr = peak + cb
+            if ex.endswith("a"):
+                tr = np.where(peak <= e - R, tr, np.inf)
+            eff = np.minimum(eff, tr)
     if "be" in ex:
         fav = coin.h[a:b] if d == 1 else coin.l[a:b]
         kb = first_true(fav >= e + 2 * R) if d == 1 else first_true(fav <= e - 2 * R)
@@ -338,7 +353,8 @@ ENTRY_AD = {0: "kapanışta 03:00 (Tokyo açılışı)", 1: "+1 saat (04:00)", 2
 ENTRIES = [0, 1, 2, 5, 7, 8, 9, 13, 14, "kad", "kads"]
 EXIT_AD = {"tp5": "TP 5R", "tp5_be": "TP 5R + 2R'de stop girişe", "don10": "günlük stop 10 gün dibi",
            "don10_be": "günlük stop 10 gün + 2R'de stop girişe", "don20": "günlük stop 20 gün dibi",
-           "hyb10": "yarısı 3R + kalanı günlük stop 10 gün"}
+           "hyb10": "yarısı 3R + kalanı günlük stop 10 gün", "tr2": "OKX iz süren stop 2×ATR",
+           "tr3": "OKX iz süren stop 3×ATR", "tr3a": "OKX iz süren stop 3×ATR (1R kârda başlar)"}
 OFF_AD = {0: "03:00", 6 * 3600: "09:00", 12 * 3600: "15:00", 18 * 3600: "21:00"}
 
 
