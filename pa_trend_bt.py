@@ -184,6 +184,10 @@ class Coin:
             hi = np.full(len(self.t), np.nan)
             lo[ok], hi[ok] = mn[self.di[ok]], mx[self.di[ok]]
             self.don[N] = (lo, hi)
+            # sabah güncelleme: günlük kapanıştan 5 saat sonra geçerli olur
+            lo5 = np.concatenate((np.full(5, np.nan), lo[:-5]))
+            hi5 = np.concatenate((np.full(5, np.nan), hi[:-5]))
+            self.don[f"{N}g"] = (lo5, hi5)
 
     def datr_at(self, t):
         i = bisect.bisect_right(self.D["t"], t - 86400) - 1
@@ -249,6 +253,12 @@ def fill(ev, coin, entry, sk):
         return "elendi"
     if entry == "piyasa":
         e = ev["close"]
+        jf, start, fee = j0, j0, TAKER
+    elif entry == "sabah":                                   # mum kapanışından 5 saat sonra (03:00 → 08:00 TR) piyasa
+        j0 = int(np.searchsorted(coin.t, ev["t"] + 5 * 3600))
+        if j0 >= n:
+            return "elendi"
+        e = float(coin.o[j0])
         jf, start, fee = j0, j0, TAKER
     else:
         e = ev["lvl"] + d * TOL * ev["atr"]
@@ -360,8 +370,8 @@ def simulate(ev, coin, f, ex):
         return done(0.5 * 2 + 0.5 * (px - e) * d / R, 0.5 * MAKER + 0.5 * TAKER, k, "TP + iz süren")
 
     if ex.startswith("don"):
-        N = int(ex[3:])
-        lo, hi = coin.don[N]
+        N = ex[3:]
+        lo, hi = coin.don[int(N) if N.isdigit() else N]
         if d == 1:
             lv = np.nan_to_num(lo[a:b], nan=-np.inf)
             eff = np.maximum.accumulate(np.maximum(stop, lv))
