@@ -1,6 +1,6 @@
 Mod: daily · anahtar: var · canlı: True · demo: True
 🌅 Trend botu — günlük çalışma (DEMO CANLI) · 17.10.2026 günlük mumu
-💰 Bakiye: 1000.10 USDT (başlangıç 100.00)
+💰 Bakiye: 999.71 USDT (başlangıç 100.00)
 🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 6/8
 • 🔴 SHORT ETH: zaten pozisyon/emir var, atlandı
 • 🔴 SHORT SUI: zaten pozisyon/emir var, atlandı
@@ -13,7 +13,7 @@ Mod: daily · anahtar: var · canlı: True · demo: True
 • 🟢 LONG A: fiyat stopun ötesine geçmiş, atlandı
 ❌ DASH emir hatası: /api/v5/account/set-leverage: 51001 Instrument ID, Instrument ID code, or Spread ID doesn't exist.
 🌅 Trend botu — günlük çalışma (DEMO CANLI) · 17.10.2026 günlük mumu
-💰 Bakiye: 1000.10 USDT (başlangıç 100.00)
+💰 Bakiye: 999.71 USDT (başlangıç 100.00)
 🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 6/8
 • 🔴 SHORT ETH: zaten pozisyon/emir var, atlandı
 • 🔴 SHORT SUI: zaten pozisyon/emir var, atlandı
