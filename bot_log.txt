@@ -29,3 +29,4 @@ Mod: daily · anahtar: yok · canlı: False · demo: False
 📊 [KURU] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
 ℹ️ Otomatik işlem botu, yatırım tavsiyesi değildir.
 
+UYARI: TG_TOKEN veya TG_CHAT_ID tanımlı değil, Telegram'a mesaj gönderilmedi!
