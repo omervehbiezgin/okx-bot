@@ -45,6 +45,9 @@ LIVE = os.getenv("PA_LIVE", "") == "1"
 DEMO = os.getenv("PA_DEMO", "") == "1"
 DRY_BALANCE = float(os.getenv("PA_DRY_BALANCE") or 100)
 START_BALANCE = float(os.getenv("PA_START_BALANCE") or 0)
+# Sanal sermaye: >0 ise bot hesabın tamamı yerine bu tutarla başlamış gibi davranır (örn. 5000 USDT demo hesapta 100 USDT).
+# Bakiye = sermaye + (hesabın şimdiki değeri − bot başladığındaki değeri); kâr/zarar bu tutara eklenir.
+CAPITAL = float(os.getenv("PA_CAPITAL") or 0)
 K = 3                       # tepe/dip onayı (gün)
 EMA_N = 50
 SK = 0.5                    # stop: seviye ∓ SK × ATR
@@ -335,6 +338,12 @@ def paper_check(st, now):
             ps["checked"] = t + 3600
 
 
+def virtual_balance(st, eq, avail):
+    base = st.setdefault("real_start", eq)
+    v = CAPITAL + (eq - base)
+    return v, v - max(0.0, eq - avail)
+
+
 # ---------------- Günlük rutin ----------------
 def daily(ok, st, now):
     mode = "CANLI" if (ok.has_keys and LIVE) else ("GÖZLEM" if ok.has_keys else "KURU ÇALIŞMA")
@@ -349,6 +358,8 @@ def daily(ok, st, now):
     if ok.has_keys:
         ok.load_config()
         eq, avail = ok.balance()
+        if CAPITAL > 0:
+            eq, avail = virtual_balance(st, eq, avail)
         positions = ok.positions()
         pend = [o for o in ok.pending_orders() if o.get("clOrdId", "").startswith(TAG)]
         stops = ok.stop_orders()
@@ -596,7 +607,7 @@ def hourly(ok, st, now):
 
 
 # ---------------- Ana akış ----------------
-def connection_report(ok):
+def connection_report(ok, st):
     msg = "✅ Trend botu bağlantı testi. "
     if not ok.has_keys:
         return msg + "OKX anahtarı tanımlı değil (kuru çalışma)."
@@ -605,6 +616,9 @@ def connection_report(ok):
     lv = str(cfg.get("acctLv", ""))
     lv_ad = {"1": "Spot (vadeli işlem YAPILAMAZ)", "2": "Vadeli (Futures)", "3": "Çoklu para birimi marjin",
              "4": "Portföy marjin"}.get(lv, lv)
+    if CAPITAL > 0:
+        msg += f"Sanal sermaye {CAPITAL:.0f} USDT (hesabın tamamı {eq:.2f} USDT, işlemler {CAPITAL:.0f} USDT'ye göre). "
+        eq, avail = virtual_balance(st, eq, avail)
     msg += (f"OKX bağlantısı tamam · bakiye {eq:.2f} USDT · hesap modu: {lv_ad} · pozisyon modu {ok.pos_mode} · "
             f"emir: {'EVET' if LIVE else 'hayır (gözlem)'} · demo: {'evet' if DEMO else 'hayır (GERÇEK hesap)'}")
     if lv == "1":
@@ -636,7 +650,7 @@ def main():
             st.clear()
             st["ctx"] = ctx
         if mode == "test" or (ok.has_keys and not st.get("baglanti_raporu")):
-            p.send(connection_report(ok))
+            p.send(connection_report(ok, st))
             if ok.has_keys:
                 st["baglanti_raporu"] = int(now)
             if mode == "test":
