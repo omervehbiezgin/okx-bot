@@ -338,6 +338,8 @@ def paper_check(st, now):
 # ---------------- Günlük rutin ----------------
 def daily(ok, st, now):
     mode = "CANLI" if (ok.has_keys and LIVE) else ("GÖZLEM" if ok.has_keys else "KURU ÇALIŞMA")
+    if DEMO and ok.has_keys:
+        mode = "DEMO " + mode
     day_open = last_closed_day_open(now)
     day_s = datetime.fromtimestamp(day_open, TR).strftime("%d.%m.%Y")
     note(f"🌅 Trend botu — günlük çalışma ({mode}) · {day_s} günlük mumu")
