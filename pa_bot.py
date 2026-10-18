@@ -711,7 +711,8 @@ def main():
                     ok.cancel_algos(items[i:i + 10])
                 except OkxError as e:
                     log(f"stop iptal: {e}")
-            for k in ("entries", "known"):
+            # Temizlikten sonra istatistik sıfırdan başlar: sanal sermayenin ve acil frenin başlangıç noktası yeniden alınır
+            for k in ("entries", "known", "real_start", "start_balance"):
                 st.pop(k, None)
             p.send("🧹 Trend botu: tüm pozisyonlar kapatıldı" + (DEMO and " (DEMO)" or "") + "\n" +
                    ("\n".join("• " + x for x in sat) if sat else "Açık pozisyon yoktu."))
