@@ -1,0 +1,59 @@
+name: PA Gecmis Test
+
+# Kapsamlı geçmişe dönük test (pa_backtest.py). Telegram'a MESAJ GÖNDERMEZ (secret verilmez),
+# canlı botun durum dosyasına dokunmaz. Sonuç tablosu "pa-test-sonuclari" dalına bt_sonuc.md olarak yazılır.
+
+on:
+  workflow_dispatch:
+    inputs:
+      gun:
+        description: "Kaç gün geriye test edilsin (30-150)"
+        default: "120"
+      dogrulama:
+        description: "Bunun son kaç günü doğrulama için ayrılsın"
+        default: "40"
+
+permissions:
+  contents: write              # sadece sonuç dalına yazmak için
+
+concurrency:
+  group: okx-pa-test
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Onceki test verisini geri yukle
+        uses: actions/cache/restore@v4
+        with:
+          path: bt_cache2.json.gz
+          key: pa-bt2-${{ github.run_id }}
+          restore-keys: pa-bt2-
+      - run: pip install requests numpy
+      - run: python pa_backtest.py
+        env:
+          PA_BACKTEST: ${{ inputs.gun || '120' }}
+          PA_TEST_DAYS: ${{ inputs.dogrulama || '40' }}
+      - name: Test verisini kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: bt_cache2.json.gz
+          key: pa-bt2-${{ github.run_id }}
+      - name: Sonuclari pa-test-sonuclari dalina yaz
+        if: always()
+        run: |
+          [ -f bt_sonuc.md ] || exit 0
+          mkdir -p /tmp/sonuc && cp bt_sonuc.md /tmp/sonuc/
+          cd /tmp/sonuc
+          git init -q -b pa-test-sonuclari
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add bt_sonuc.md
+          git commit -q -m "PA test sonuçları (çalışma ${{ github.run_id }})"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" HEAD:pa-test-sonuclari

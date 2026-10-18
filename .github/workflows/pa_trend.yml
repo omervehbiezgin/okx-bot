@@ -1,0 +1,50 @@
+name: PA Trend Testi
+
+# pa_trend_bt.py: trend takip stratejisinin 365 günlük geçmiş testi. Mesaj göndermez, canlı bota dokunmaz.
+# Sonuç "pa-test-sonuclari" dalına trend_sonuc.md olarak eklenir.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: okx-pa-trend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Onceki veriyi geri yukle
+        uses: actions/cache/restore@v4
+        with:
+          path: trend_cache.json.gz
+          key: pa-trend-${{ github.run_id }}
+          restore-keys: pa-trend-
+      - run: pip install requests numpy
+      - run: python pa_trend_bt.py
+      - name: Veriyi kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: trend_cache.json.gz
+          key: pa-trend-${{ github.run_id }}
+      - name: Sonucu pa-test-sonuclari dalina ekle
+        if: always()
+        run: |
+          [ -f trend_sonuc.md ] || exit 0
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git clone -q --depth 1 -b pa-test-sonuclari "$URL" /tmp/sonuc
+          cp trend_sonuc.md /tmp/sonuc/
+          cd /tmp/sonuc
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add trend_sonuc.md
+          git commit -q -m "PA trend testi (çalışma ${{ github.run_id }})"
+          git push -q origin HEAD:pa-test-sonuclari

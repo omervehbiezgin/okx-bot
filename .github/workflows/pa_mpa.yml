@@ -1,0 +1,59 @@
+name: PA MPA Testi
+
+# pa_mpa.py: Efloud "Mixed Price Action" kurgusunun kural tabanlı 2 yıllık testi (15m veri).
+# Mesaj göndermez, canlı bota dokunmaz. Sonuç "pa-test-sonuclari" dalına mpa_sonuc.md olarak eklenir.
+
+on:
+  push:
+    branches: [pa-strateji]
+    paths: [pa_mpa.py]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: okx-pa-mpa
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 15m veriyi geri yukle
+        uses: actions/cache/restore@v4
+        with:
+          path: mpa_cache.npz
+          key: pa-mpa-${{ github.run_id }}
+          restore-keys: pa-mpa-
+      - name: Trend testi verisini geri yukle (karsilastirma icin)
+        uses: actions/cache/restore@v4
+        with:
+          path: final_cache.json.gz
+          key: pa-final-${{ github.run_id }}
+          restore-keys: pa-final-
+      - run: pip install requests numpy
+      - run: python pa_mpa.py
+      - name: 15m veriyi kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: mpa_cache.npz
+          key: pa-mpa-${{ github.run_id }}
+      - name: Sonucu pa-test-sonuclari dalina ekle
+        if: always()
+        run: |
+          [ -f mpa_sonuc.md ] || exit 0
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git clone -q --depth 1 -b pa-test-sonuclari "$URL" /tmp/sonuc
+          cp mpa_sonuc.md /tmp/sonuc/
+          cd /tmp/sonuc
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add mpa_sonuc.md
+          git commit -q -m "PA MPA testi (çalışma ${{ github.run_id }})"
+          git push -q origin HEAD:pa-test-sonuclari

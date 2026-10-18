@@ -1,0 +1,47 @@
+name: PA Kayip Analizi
+
+# pa_kayip.py: trend stratejisinde kaybeden işlemlerin incelenmesi (eğitim / doğrulama ayrımıyla filtre adayları).
+# Mesaj göndermez, canlı bota dokunmaz. Sonuç "pa-test-sonuclari" dalına kayip_sonuc.md olarak eklenir.
+
+on:
+  push:
+    branches: [pa-strateji]
+    paths: [pa_kayip.py]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: okx-pa-kayip
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Trend testi verisini geri yukle
+        uses: actions/cache/restore@v4
+        with:
+          path: final_cache.json.gz
+          key: pa-final-${{ github.run_id }}
+          restore-keys: pa-final-
+      - run: pip install requests numpy
+      - run: python pa_kayip.py
+      - name: Sonucu pa-test-sonuclari dalina ekle
+        if: always()
+        run: |
+          [ -f kayip_sonuc.md ] || exit 0
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git clone -q --depth 1 -b pa-test-sonuclari "$URL" /tmp/sonuc
+          cp kayip_sonuc.md /tmp/sonuc/
+          cd /tmp/sonuc
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add kayip_sonuc.md
+          git commit -q -m "Kayıp analizi (çalışma ${{ github.run_id }})"
+          git push -q origin HEAD:pa-test-sonuclari
