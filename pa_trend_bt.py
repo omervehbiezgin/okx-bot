@@ -207,7 +207,7 @@ class Btc:
 
 
 # ---------------- Kurulumlar ----------------
-def events(coin, stf, btc):
+def events(coin, stf, btc, ema_n=50, ema_map=None):
     sec = STFS[stf]
     S = coin.D if stf == "1D" else p.aggregate(coin.s1, sec)
     n = len(S["t"])
@@ -215,7 +215,12 @@ def events(coin, stf, btc):
         return []
     h, l, c, v = S["h"], S["l"], S["c"], S["v"]
     atr = p.atr_arr(S)
-    e50 = ema(c, 50)
+    if ema_map is not None:                 # uzun günlük geçmişten hesaplanmış EMA (zaman damgasına göre)
+        e50 = [ema_map.get(t) for t in S["t"]]
+    elif ema_n:
+        e50 = ema(c, ema_n)
+    else:
+        e50 = list(c)                       # EMA filtresi yok: (c - e) * d > 0 kontrolü atlanır
     ph, pl = p.pivots(h, l, 0, n - 1, K)
     evs = []
     for d, piv in ((1, ph), (-1, pl)):
@@ -225,13 +230,13 @@ def events(coin, stf, btc):
             while pi < len(piv) and piv[pi][0] <= i - K:
                 cur = [piv[pi][0], piv[pi][1], False]
                 pi += 1
-            if cur is None or cur[2] or atr[i] is None or e50[i] is None:
+            if cur is None or cur[2] or atr[i] is None or (ema_n and e50[i] is None):
                 continue
             lvl = cur[1]
             if (c[i] - lvl) * d <= 0:
                 continue
             cur[2] = True                                   # her seviye bir kez
-            if (c[i] - e50[i]) * d <= 0:
+            if ema_n and (c[i] - e50[i]) * d <= 0:
                 continue
             prev = v[max(0, i - 20):i]
             volr = v[i] / statistics.median(prev) if len(prev) >= 5 and statistics.median(prev) > 0 else None
