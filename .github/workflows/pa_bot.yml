@@ -24,7 +24,7 @@ on:
         default: "auto"
 
 permissions:
-  contents: read
+  contents: write              # sadece test çalışmalarında çıktıyı pa-test-sonuclari dalına yazmak için
 
 concurrency:
   group: okx-pa-bot
@@ -59,7 +59,22 @@ jobs:
           PA_MAX_POS: ${{ vars.PA_MAX_POS }}
           PA_START_BALANCE: ${{ vars.PA_START_BALANCE }}
           BOT_MODE: ${{ inputs.mode || (github.event_name == 'push' && 'daily') || 'auto' }}
-        run: python pa_bot.py
+        run: python pa_bot.py 2>&1 | tee bot_log.txt; exit ${PIPESTATUS[0]}
+        shell: bash
+      - name: Test calismasi ciktisini pa-test-sonuclari dalina yaz (sadece push)
+        if: always() && github.event_name == 'push'
+        run: |
+          [ -f bot_log.txt ] || exit 0
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git clone -q --depth 1 -b pa-test-sonuclari "$URL" /tmp/sonuc
+          cp bot_log.txt /tmp/sonuc/bot_log.txt
+          [ -f bot_state.json ] && cp bot_state.json /tmp/sonuc/bot_state_test.json
+          cd /tmp/sonuc
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Trend botu test çıktısı (çalışma ${{ github.run_id }})" || exit 0
+          git push -q origin HEAD:pa-test-sonuclari
       - name: Bot durumunu kaydet
         if: always()
         uses: actions/cache/save@v4
