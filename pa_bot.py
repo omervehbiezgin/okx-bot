@@ -596,6 +596,27 @@ def hourly(ok, st, now):
 
 
 # ---------------- Ana akış ----------------
+def connection_report(ok):
+    msg = "✅ Trend botu bağlantı testi. "
+    if not ok.has_keys:
+        return msg + "OKX anahtarı tanımlı değil (kuru çalışma)."
+    cfg = ok.load_config()
+    eq, avail = ok.balance()
+    lv = str(cfg.get("acctLv", ""))
+    lv_ad = {"1": "Spot (vadeli işlem YAPILAMAZ)", "2": "Vadeli (Futures)", "3": "Çoklu para birimi marjin",
+             "4": "Portföy marjin"}.get(lv, lv)
+    msg += (f"OKX bağlantısı tamam · bakiye {eq:.2f} USDT · hesap modu: {lv_ad} · pozisyon modu {ok.pos_mode} · "
+            f"emir: {'EVET' if LIVE else 'hayır (gözlem)'} · demo: {'evet' if DEMO else 'hayır (GERÇEK hesap)'}")
+    if lv == "1":
+        msg += ("\n⚠️ Hesap Spot modunda. OKX → işlem ekranı ayarları → Hesap modu → 'Vadeli' (Futures) seçilmeli, "
+                "yoksa bot işlem açamaz.")
+    if eq <= 0:
+        msg += "\n⚠️ Bakiye 0 görünüyor: USDT'nin işlem (trading) hesabında olduğundan emin olun."
+    else:
+        msg += "\nBot bundan sonra her gün 03:04'te tarama yapıp sinyal varsa emir verecek."
+    return msg
+
+
 def main():
     st = load_state()
     ok = Okx()
@@ -606,25 +627,20 @@ def main():
         mode = "daily" if (st.get("last_daily") != last_closed_day_open(now) and hour < 6) else "hourly"
     log(f"Mod: {mode} · anahtar: {'var' if ok.has_keys else 'yok'} · canlı: {LIVE} · demo: {DEMO}")
     try:
-        if mode == "test":
-            msg = "✅ Test: trend botu çalışıyor. "
+        # Hesap bağlamı değişirse (kuru çalışma → demo → gerçek) eski durum taşınmaz: başlangıç bakiyesi, acil fren ve
+        # pozisyon takibi yeni hesaba göre baştan kurulur.
+        ctx = f"{'anahtar' if ok.has_keys else 'kuru'}-{'demo' if DEMO else 'gercek'}"
+        if st.get("ctx") != ctx:
+            if st.get("ctx") or st:
+                log(f"Hesap bağlamı değişti ({st.get('ctx')} → {ctx}): durum sıfırlandı")
+            st.clear()
+            st["ctx"] = ctx
+        if mode == "test" or (ok.has_keys and not st.get("baglanti_raporu")):
+            p.send(connection_report(ok))
             if ok.has_keys:
-                cfg = ok.load_config()
-                eq, avail = ok.balance()
-                lv = str(cfg.get("acctLv", ""))
-                lv_ad = {"1": "Spot (vadeli işlem YAPILAMAZ)", "2": "Vadeli (Futures)", "3": "Çoklu para birimi marjin",
-                         "4": "Portföy marjin"}.get(lv, lv)
-                msg += (f"OKX bağlantısı tamam · bakiye {eq:.2f} USDT · hesap modu: {lv_ad} · pozisyon modu "
-                        f"{ok.pos_mode} · canlı: {'EVET' if LIVE else 'hayır (gözlem)'} · demo: {'evet' if DEMO else 'hayır'}")
-                if lv == "1":
-                    msg += ("\n⚠️ Hesap Spot modunda. OKX → Ayarlar → Hesap modu → 'Vadeli' (Futures) seçilmeli, "
-                            "yoksa bot işlem açamaz.")
-                if eq <= 0:
-                    msg += "\n⚠️ Bakiye 0 görünüyor: USDT'nin alt hesabın işlem (trading) hesabında olduğundan emin olun."
-            else:
-                msg += "OKX anahtarı tanımlı değil (kuru çalışma)."
-            p.send(msg)
-            return
+                st["baglanti_raporu"] = int(now)
+            if mode == "test":
+                return
         if mode == "daily":
             daily(ok, st, now)
             p.send("\n".join(msgs) + "\nℹ️ Otomatik işlem botu, yatırım tavsiyesi değildir.")
