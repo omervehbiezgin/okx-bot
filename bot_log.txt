@@ -1,30 +1,29 @@
 Mod: daily · anahtar: yok · canlı: True · demo: True
-Hesap bağlamı değişti (anahtar-demo → kuru-demo): durum sıfırlandı
 🌅 Trend botu — günlük çalışma (KURU ÇALIŞMA) · 17.10.2026 günlük mumu
 💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 0/8
-📝 [KURU] 🔴 SHORT ETH · seviye 2405.03 kırıldı · giriş 2362.95 · stop 2454.31 (%3.87) · 0.1 kontrat ≈ 23.63 USDT · 10x → teminat 2.36 USDT · risk 0.91 USDT
-📝 [KURU] 🔴 SHORT SUI · seviye 0.9971 kırıldı · giriş 0.9562 · stop 1.0362 (%8.37) · 12 kontrat ≈ 11.47 USDT · 7x → teminat 1.64 USDT · risk 0.96 USDT
-📝 [KURU] 🔴 SHORT ENA · seviye 0.19383 kırıldı · giriş 0.182 · stop 0.20479 (%12.52) · 4 kontrat ≈ 7.28 USDT · 5x → teminat 1.46 USDT · risk 0.91 USDT
-📝 [KURU] 🔴 SHORT ADA · seviye 0.2234 kırıldı · giriş 0.2155 · stop 0.2324 (%7.84) · 0.5 kontrat ≈ 10.78 USDT · 8x → teminat 1.35 USDT · risk 0.84 USDT
-📝 [KURU] 🔴 SHORT LINK · seviye 12.06 kırıldı · giriş 11.736 · stop 12.403 (%5.68) · 1.4 kontrat ≈ 16.43 USDT · 10x → teminat 1.64 USDT · risk 0.93 USDT
-📝 [KURU] 🔴 SHORT XPL · seviye 0.07969 kırıldı · giriş 0.07555 · stop 0.08281 (%9.61) · 13 kontrat ≈ 9.82 USDT · 6x → teminat 1.64 USDT · risk 0.94 USDT
-📝 [KURU] 🔴 SHORT ONDO · seviye 0.4389 kırıldı · giriş 0.4252 · stop 0.4576 (%7.62) · 3 kontrat ≈ 12.76 USDT · 8x → teminat 1.59 USDT · risk 0.97 USDT
-📝 [KURU] 🔴 SHORT PENGU · seviye 0.007575 kırıldı · giriş 0.007228 · stop 0.007871 (%8.90) · 15 kontrat ≈ 10.84 USDT · 7x → teminat 1.55 USDT · risk 0.96 USDT
+🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 8/8
+• 🔴 SHORT ETH: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT SUI: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ENA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ADA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT LINK: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT XPL: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ONDO: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT PENGU: zaten pozisyon/emir var, atlandı
 • 🔴 SHORT DASH: yer yok (8 pozisyon dolu), atlandı
 • 🟢 LONG A: yer yok (8 pozisyon dolu), atlandı
 📊 [KURU] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
 🌅 Trend botu — günlük çalışma (KURU ÇALIŞMA) · 17.10.2026 günlük mumu
 💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 0/8
-📝 [KURU] 🔴 SHORT ETH · seviye 2405.03 kırıldı · giriş 2362.95 · stop 2454.31 (%3.87) · 0.1 kontrat ≈ 23.63 USDT · 10x → teminat 2.36 USDT · risk 0.91 USDT
-📝 [KURU] 🔴 SHORT SUI · seviye 0.9971 kırıldı · giriş 0.9562 · stop 1.0362 (%8.37) · 12 kontrat ≈ 11.47 USDT · 7x → teminat 1.64 USDT · risk 0.96 USDT
-📝 [KURU] 🔴 SHORT ENA · seviye 0.19383 kırıldı · giriş 0.182 · stop 0.20479 (%12.52) · 4 kontrat ≈ 7.28 USDT · 5x → teminat 1.46 USDT · risk 0.91 USDT
-📝 [KURU] 🔴 SHORT ADA · seviye 0.2234 kırıldı · giriş 0.2155 · stop 0.2324 (%7.84) · 0.5 kontrat ≈ 10.78 USDT · 8x → teminat 1.35 USDT · risk 0.84 USDT
-📝 [KURU] 🔴 SHORT LINK · seviye 12.06 kırıldı · giriş 11.736 · stop 12.403 (%5.68) · 1.4 kontrat ≈ 16.43 USDT · 10x → teminat 1.64 USDT · risk 0.93 USDT
-📝 [KURU] 🔴 SHORT XPL · seviye 0.07969 kırıldı · giriş 0.07555 · stop 0.08281 (%9.61) · 13 kontrat ≈ 9.82 USDT · 6x → teminat 1.64 USDT · risk 0.94 USDT
-📝 [KURU] 🔴 SHORT ONDO · seviye 0.4389 kırıldı · giriş 0.4252 · stop 0.4576 (%7.62) · 3 kontrat ≈ 12.76 USDT · 8x → teminat 1.59 USDT · risk 0.97 USDT
-📝 [KURU] 🔴 SHORT PENGU · seviye 0.007575 kırıldı · giriş 0.007228 · stop 0.007871 (%8.90) · 15 kontrat ≈ 10.84 USDT · 7x → teminat 1.55 USDT · risk 0.96 USDT
+🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 8/8
+• 🔴 SHORT ETH: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT SUI: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ENA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ADA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT LINK: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT XPL: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ONDO: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT PENGU: zaten pozisyon/emir var, atlandı
 • 🔴 SHORT DASH: yer yok (8 pozisyon dolu), atlandı
 • 🟢 LONG A: yer yok (8 pozisyon dolu), atlandı
 📊 [KURU] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
