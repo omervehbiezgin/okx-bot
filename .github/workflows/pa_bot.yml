@@ -49,8 +49,9 @@ jobs:
       - name: Botu calistir
         env:
           # push ile yapılan test çalışmaları Telegram'a mesaj göndermez (çıktı sonuç dalına yazılır)
-          TG_TOKEN: ${{ github.event_name != 'push' && secrets.TG_TOKEN || '' }}
-          TG_CHAT_ID: ${{ github.event_name != 'push' && secrets.TG_CHAT_ID || '' }}
+          # Ayrı Telegram botu: PA_TG_TOKEN (ve isterseniz PA_TG_CHAT_ID) tanımlıysa o kullanılır, yoksa eski bot
+          TG_TOKEN: ${{ github.event_name != 'push' && (secrets.PA_TG_TOKEN || secrets.TG_TOKEN) || '' }}
+          TG_CHAT_ID: ${{ github.event_name != 'push' && (secrets.PA_TG_CHAT_ID || secrets.TG_CHAT_ID) || '' }}
           OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
           OKX_API_SECRET: ${{ secrets.OKX_API_SECRET }}
           OKX_API_PASSPHRASE: ${{ secrets.OKX_API_PASSPHRASE }}
