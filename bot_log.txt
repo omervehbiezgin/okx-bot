@@ -1,31 +1,26 @@
 Mod: daily · anahtar: var · canlı: True · demo: True
-Hesap bağlamı değişti (kuru-demo → anahtar-demo): durum sıfırlandı
-✅ Trend botu bağlantı testi. Sanal sermaye 100 USDT (hesabın tamamı 5000.00 USDT, işlemler 100 USDT'ye göre). OKX bağlantısı tamam · bakiye 100.00 USDT · hesap modu: Vadeli (Futures) · pozisyon modu net_mode · emir: EVET · demo: evet
-Bot bundan sonra her gün 03:04'te tarama yapıp sinyal varsa emir verecek.
-
-UYARI: TG_TOKEN veya TG_CHAT_ID tanımlı değil, Telegram'a mesaj gönderilmedi!
 🌅 Trend botu — günlük çalışma (DEMO CANLI) · 17.10.2026 günlük mumu
-💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 0/8
-✅ 🔴 SHORT ETH · seviye 2405.03 kırıldı · giriş 2387.21 · stop 2454.31 (%2.81) · 0.14 kontrat ≈ 33.42 USDT · 10x → teminat 3.34 USDT · risk 0.94 USDT
-✅ 🔴 SHORT SUI · seviye 0.9971 kırıldı · giriş 0.9611 · stop 1.0362 (%7.81) · 13 kontrat ≈ 12.49 USDT · 8x → teminat 1.56 USDT · risk 0.98 USDT
-✅ 🔴 SHORT ENA · seviye 0.19383 kırıldı · giriş 0.18216 · stop 0.20479 (%12.42) · 4 kontrat ≈ 7.29 USDT · 5x → teminat 1.46 USDT · risk 0.91 USDT
-✅ 🔴 SHORT ADA · seviye 0.2234 kırıldı · giriş 0.2163 · stop 0.2324 (%7.44) · 0.6 kontrat ≈ 12.98 USDT · 8x → teminat 1.62 USDT · risk 0.97 USDT
-✅ 🔴 SHORT LINK · seviye 12.06 kırıldı · giriş 11.814 · stop 12.403 (%4.99) · 1.6 kontrat ≈ 18.90 USDT · 10x → teminat 1.89 USDT · risk 0.94 USDT
-✅ 🔴 SHORT XPL · seviye 0.07969 kırıldı · giriş 0.07686 · stop 0.08281 (%7.74) · 16 kontrat ≈ 12.30 USDT · 8x → teminat 1.54 USDT · risk 0.95 USDT
+💰 Bakiye: 1000.10 USDT (başlangıç 100.00)
+🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 6/8
+• 🔴 SHORT ETH: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT SUI: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ENA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ADA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT LINK: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT XPL: zaten pozisyon/emir var, atlandı
 ❌ ONDO emir hatası: /api/v5/account/set-leverage: 51001 Instrument ID, Instrument ID code, or Spread ID doesn't exist.
 ❌ PENGU emir hatası: /api/v5/account/set-leverage: 51001 Instrument ID, Instrument ID code, or Spread ID doesn't exist.
 • 🟢 LONG A: fiyat stopun ötesine geçmiş, atlandı
 ❌ DASH emir hatası: /api/v5/account/set-leverage: 51001 Instrument ID, Instrument ID code, or Spread ID doesn't exist.
 🌅 Trend botu — günlük çalışma (DEMO CANLI) · 17.10.2026 günlük mumu
-💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 0/8
-✅ 🔴 SHORT ETH · seviye 2405.03 kırıldı · giriş 2387.21 · stop 2454.31 (%2.81) · 0.14 kontrat ≈ 33.42 USDT · 10x → teminat 3.34 USDT · risk 0.94 USDT
-✅ 🔴 SHORT SUI · seviye 0.9971 kırıldı · giriş 0.9611 · stop 1.0362 (%7.81) · 13 kontrat ≈ 12.49 USDT · 8x → teminat 1.56 USDT · risk 0.98 USDT
-✅ 🔴 SHORT ENA · seviye 0.19383 kırıldı · giriş 0.18216 · stop 0.20479 (%12.42) · 4 kontrat ≈ 7.29 USDT · 5x → teminat 1.46 USDT · risk 0.91 USDT
-✅ 🔴 SHORT ADA · seviye 0.2234 kırıldı · giriş 0.2163 · stop 0.2324 (%7.44) · 0.6 kontrat ≈ 12.98 USDT · 8x → teminat 1.62 USDT · risk 0.97 USDT
-✅ 🔴 SHORT LINK · seviye 12.06 kırıldı · giriş 11.814 · stop 12.403 (%4.99) · 1.6 kontrat ≈ 18.90 USDT · 10x → teminat 1.89 USDT · risk 0.94 USDT
-✅ 🔴 SHORT XPL · seviye 0.07969 kırıldı · giriş 0.07686 · stop 0.08281 (%7.74) · 16 kontrat ≈ 12.30 USDT · 8x → teminat 1.54 USDT · risk 0.95 USDT
+💰 Bakiye: 1000.10 USDT (başlangıç 100.00)
+🔎 75 coin tarandı, 10 sinyal. Açık/bekleyen: 6/8
+• 🔴 SHORT ETH: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT SUI: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ENA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT ADA: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT LINK: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT XPL: zaten pozisyon/emir var, atlandı
 ❌ ONDO emir hatası: /api/v5/account/set-leverage: 51001 Instrument ID, Instrument ID code, or Spread ID doesn't exist.
 ❌ PENGU emir hatası: /api/v5/account/set-leverage: 51001 Instrument ID, Instrument ID code, or Spread ID doesn't exist.
 • 🟢 LONG A: fiyat stopun ötesine geçmiş, atlandı
