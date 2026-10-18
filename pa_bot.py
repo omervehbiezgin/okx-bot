@@ -195,6 +195,13 @@ class Okx:
             self._inst = {d["instId"]: d for d in data}
         return self._inst
 
+    def tradable(self):
+        """Bu hesapta (demo ise demo hesapta) işlem görebilen canlı SWAP kontratları; anahtar yoksa None."""
+        if not self.has_keys:
+            return None
+        data = self.req("GET", "/api/v5/public/instruments", {"instType": "SWAP"})
+        return {d["instId"] for d in data if d.get("state", "live") == "live"}
+
     def last_price(self, inst):
         return float(p.api("/api/v5/market/ticker", {"instId": inst})[0]["last"])
 
@@ -338,6 +345,27 @@ def paper_check(st, now):
             ps["checked"] = t + 3600
 
 
+def universe(ok):
+    """Hacme göre en büyük 80 kripto USDT perpetual; anahtar varsa sadece bu hesapta işlem görebilenler arasından."""
+    n = p.MAX_SYMBOLS
+    try:
+        ok_set = ok.tradable()
+    except OkxError as e:
+        log(f"hesaptaki kontrat listesi alınamadı, filtresiz taranıyor: {e}")
+        ok_set = None
+    if ok_set is None:
+        return p.get_symbols()
+    p.MAX_SYMBOLS = 10 ** 6
+    try:
+        allsyms = p.get_symbols()
+    finally:
+        p.MAX_SYMBOLS = n
+    out = [x for x in allsyms if x in ok_set]
+    if len(out) < len(allsyms):
+        log(f"{len(allsyms) - len(out)} coin bu hesapta işlem görmediği için taranmadı")
+    return out[:n]
+
+
 def virtual_balance(st, eq, avail):
     base = st.setdefault("real_start", eq)
     v = CAPITAL + (eq - base)
@@ -441,7 +469,7 @@ def daily(ok, st, now):
     # 4) Yeni sinyaller
     held = {x["inst"] for x in open_list} | {o["instId"] for o in pend}
     slots = MAX_POS - len(held)
-    syms = p.get_symbols()
+    syms = universe(ok)
     found = []
     for inst in syms:
         try:
