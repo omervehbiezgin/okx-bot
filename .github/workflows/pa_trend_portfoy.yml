@@ -4,9 +4,6 @@ name: PA Trend Portfoy Testi
 # Sonuç "pa-test-sonuclari" dalına trend_portfoy.md olarak eklenir.
 
 on:
-  push:
-    branches: [pa-strateji]
-    paths: [pa_trend_portfoy.py]
   workflow_dispatch:
 
 permissions:
