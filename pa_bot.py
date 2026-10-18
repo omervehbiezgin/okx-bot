@@ -515,7 +515,10 @@ def daily(ok, st, now):
                                                            ordId=r.get("ordId"), risk=real_risk)
                 note("✅ " + line)
             except OkxError as e:
-                note(f"❌ {short(inst)} emir hatası: {e}")
+                if "51001" in str(e):
+                    note(f"• {yon} {short(inst)}: bu coin {'demo ' if DEMO else ''}hesapta işlem görmüyor, atlandı")
+                else:
+                    note(f"❌ {short(inst)} emir hatası: {e}")
                 continue
         elif ok.has_keys:
             note("📝 (yapılacaktı) " + line)
@@ -655,6 +658,36 @@ def main():
                 st["baglanti_raporu"] = int(now)
             if mode == "test":
                 return
+        if mode == "closeall":
+            # Elle tetiklenen temizlik: hesaptaki tüm SWAP pozisyonlarını kapatır, bekleyen bot emirlerini ve stopları siler
+            if not ok.has_keys or not LIVE:
+                p.send("Kapatma: OKX anahtarı yok veya emir kapalı, bir şey yapılmadı.")
+                return
+            ok.load_config()
+            sat = []
+            for o in ok.pending_orders():
+                if o.get("clOrdId", "").startswith(TAG):
+                    try:
+                        ok.cancel_order(o["instId"], o["ordId"])
+                    except OkxError as e:
+                        log(f"emir iptal edilemedi {o['instId']}: {e}")
+            for x in ok.positions():
+                try:
+                    ok.close_position(x["inst"], x["dir"])
+                    sat.append(f"{'LONG' if x['dir'] == 1 else 'SHORT'} {short(x['inst'])} (k/z {x['upl']:+.2f} USDT)")
+                except OkxError as e:
+                    sat.append(f"{short(x['inst'])}: kapatılamadı ({e})")
+            items = [(a["instId"], a["algoId"]) for a in ok.stop_orders()]
+            for i in range(0, len(items), 10):
+                try:
+                    ok.cancel_algos(items[i:i + 10])
+                except OkxError as e:
+                    log(f"stop iptal: {e}")
+            for k in ("entries", "known"):
+                st.pop(k, None)
+            p.send("🧹 Trend botu: tüm pozisyonlar kapatıldı" + (DEMO and " (DEMO)" or "") + "\n" +
+                   ("\n".join("• " + x for x in sat) if sat else "Açık pozisyon yoktu."))
+            return
         if mode == "daily":
             daily(ok, st, now)
             p.send("\n".join(msgs) + "\nℹ️ Otomatik işlem botu, yatırım tavsiyesi değildir.")
