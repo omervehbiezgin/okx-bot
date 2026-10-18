@@ -1,0 +1,68 @@
+name: OKX Trend Botu
+
+# pa_bot.py: günlük trend stratejisi botu. Mevcut "OKX Hacim Tarayici" ile hiçbir şey paylaşmaz
+# (ayrı dosya, ayrı durum dosyası bot_state.json, ayrı cache ve concurrency grubu); sadece aynı Telegram botuna yazar.
+#
+# Çalışma: her gün 00:04 UTC (03:04 TR) günlük rutin, her saatin 34. dakikasında bakım.
+# Modlar: OKX anahtarı yoksa KURU ÇALIŞMA; anahtar varsa GÖZLEM; repo değişkeni PA_LIVE=1 ise CANLI.
+# Gerekli secret'lar: TG_TOKEN, TG_CHAT_ID (var olanlar), OKX_API_KEY, OKX_API_SECRET, OKX_API_PASSPHRASE.
+# İsteğe bağlı repo değişkenleri (Settings → Secrets and variables → Actions → Variables):
+#   PA_LIVE (1 = canlı), PA_DEMO (1 = OKX demo hesabı), PA_RISK (varsayılan 1), PA_MAX_POS (varsayılan 8),
+#   PA_START_BALANCE (acil fren için başlangıç bakiyesi).
+
+on:
+  schedule:
+    - cron: "4 0 * * *"
+    - cron: "34 * * * *"
+  push:
+    branches: [pa-strateji]
+    paths: [pa_bot.py]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "auto / daily / hourly / test"
+        default: "auto"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: okx-pa-bot
+  cancel-in-progress: false
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Bot durumunu geri yukle
+        uses: actions/cache/restore@v4
+        with:
+          path: bot_state.json
+          key: pa-bot-state-${{ github.run_id }}
+          restore-keys: pa-bot-state-
+      - run: pip install requests
+      - name: Botu calistir
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
+          OKX_API_SECRET: ${{ secrets.OKX_API_SECRET }}
+          OKX_API_PASSPHRASE: ${{ secrets.OKX_API_PASSPHRASE }}
+          PA_LIVE: ${{ vars.PA_LIVE }}
+          PA_DEMO: ${{ vars.PA_DEMO }}
+          PA_RISK: ${{ vars.PA_RISK }}
+          PA_MAX_POS: ${{ vars.PA_MAX_POS }}
+          PA_START_BALANCE: ${{ vars.PA_START_BALANCE }}
+          BOT_MODE: ${{ inputs.mode || (github.event_name == 'push' && 'daily') || 'auto' }}
+        run: python pa_bot.py
+      - name: Bot durumunu kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: bot_state.json
+          key: pa-bot-state-${{ github.run_id }}
