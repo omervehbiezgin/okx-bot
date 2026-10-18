@@ -1,4 +1,4 @@
-Mod: daily · anahtar: yok · canlı: False · demo: False
+Mod: daily · anahtar: yok · canlı: True · demo: True
 🌅 Trend botu — günlük çalışma (KURU ÇALIŞMA) · 17.10.2026 günlük mumu
 💰 Bakiye: 100.00 USDT (başlangıç 100.00)
 🔎 73 coin tarandı, 10 sinyal. Açık/bekleyen: 8/8
