@@ -4,9 +4,6 @@ name: PA Trend Limit ve Butce Testi
 # Sonuç "pa-test-sonuclari" dalına trend_limit.md olarak eklenir.
 
 on:
-  push:
-    branches: [pa-strateji]
-    paths: [pa_trend_limit.py]
   workflow_dispatch:
 
 permissions:
