@@ -54,8 +54,9 @@ jobs:
           OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
           OKX_API_SECRET: ${{ secrets.OKX_API_SECRET }}
           OKX_API_PASSPHRASE: ${{ secrets.OKX_API_PASSPHRASE }}
-          PA_LIVE: ${{ vars.PA_LIVE }}
-          PA_DEMO: ${{ vars.PA_DEMO }}
+          # Şimdilik varsayılan: OKX DEMO hesabında emir gönderir (sanal para). Gerçek hesaba geçerken PA_DEMO '0' yapılır.
+          PA_LIVE: ${{ vars.PA_LIVE || '1' }}
+          PA_DEMO: ${{ vars.PA_DEMO || '1' }}
           PA_RISK: ${{ vars.PA_RISK }}
           PA_MAX_POS: ${{ vars.PA_MAX_POS }}
           PA_START_BALANCE: ${{ vars.PA_START_BALANCE }}
