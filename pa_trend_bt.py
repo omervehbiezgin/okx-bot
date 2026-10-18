@@ -46,6 +46,7 @@ K = 3                          # tepe/dip onayı (mum)
 TOL = 0.25                     # limit emir seviyenin bu kadar ATR önüne konur
 EXPIRY = {"1D": 10, "4H": 30}  # limit emir geçerlilik (yapı mumu)
 MAXH = 60 * 24                 # en uzun tutma (1H mum)
+LIMIT_HOURS = 48               # sabah limit emri en fazla kaç saat bekler
 MIN_SP, MAX_SP = 0.5, 15.0     # stop mesafesi % aralığı
 TR = timezone(timedelta(hours=3))
 
@@ -259,6 +260,29 @@ def fill(ev, coin, entry, sk):
     if entry == "piyasa":
         e = ev["close"]
         jf, start, fee = j0, j0, TAKER
+    elif entry.startswith("lim_s"):                          # 08:00 TR'de limit emir: sabah fiyatı ∓ k × günlük ATR
+        k = float(entry[5:])
+        j0 = int(np.searchsorted(coin.t, ev["t"] + 5 * 3600))
+        if j0 >= n or not ev["datr"]:
+            return "elendi"
+        e = float(coin.o[j0]) - d * k * ev["datr"]
+        end = min(n, j0 + LIMIT_HOURS)
+        seg = coin.l[j0:end] if d == 1 else coin.h[j0:end]
+        kk = first_true(seg <= e) if d == 1 else first_true(seg >= e)
+        if kk is None:
+            return "dolmadi"
+        jf = j0 + kk
+        start, fee = jf + 1, MAKER
+        if (e - stop) * d <= 0:
+            return "elendi"
+        R_ = abs(e - stop)
+        sp_ = R_ / e * 100
+        if sp_ < MIN_SP or sp_ > MAX_SP:
+            return "elendi"
+        bad = coin.l[jf] <= stop if d == 1 else coin.h[jf] >= stop
+        if bad:
+            return ("stop", e, stop, jf, fee)
+        return (e, stop, jf, start, fee)
     elif entry == "sabah":                                   # mum kapanışından 5 saat sonra (03:00 → 08:00 TR) piyasa
         j0 = int(np.searchsorted(coin.t, ev["t"] + 5 * 3600))
         if j0 >= n:

@@ -4,9 +4,6 @@ name: PA Trend EMA ve Kayma Testi
 # Sonuç "pa-test-sonuclari" dalına trend_ema.md olarak eklenir.
 
 on:
-  push:
-    branches: [pa-strateji]
-    paths: [pa_trend_ema.py]
   workflow_dispatch:
 
 permissions:
