@@ -607,9 +607,18 @@ def main():
         if mode == "test":
             msg = "✅ Test: trend botu çalışıyor. "
             if ok.has_keys:
-                ok.load_config()
+                cfg = ok.load_config()
                 eq, avail = ok.balance()
-                msg += f"OKX bağlantısı tamam · bakiye {eq:.2f} USDT · pozisyon modu {ok.pos_mode} · canlı: {LIVE}"
+                lv = str(cfg.get("acctLv", ""))
+                lv_ad = {"1": "Spot (vadeli işlem YAPILAMAZ)", "2": "Vadeli (Futures)", "3": "Çoklu para birimi marjin",
+                         "4": "Portföy marjin"}.get(lv, lv)
+                msg += (f"OKX bağlantısı tamam · bakiye {eq:.2f} USDT · hesap modu: {lv_ad} · pozisyon modu "
+                        f"{ok.pos_mode} · canlı: {'EVET' if LIVE else 'hayır (gözlem)'} · demo: {'evet' if DEMO else 'hayır'}")
+                if lv == "1":
+                    msg += ("\n⚠️ Hesap Spot modunda. OKX → Ayarlar → Hesap modu → 'Vadeli' (Futures) seçilmeli, "
+                            "yoksa bot işlem açamaz.")
+                if eq <= 0:
+                    msg += "\n⚠️ Bakiye 0 görünüyor: USDT'nin alt hesabın işlem (trading) hesabında olduğundan emin olun."
             else:
                 msg += "OKX anahtarı tanımlı değil (kuru çalışma)."
             p.send(msg)

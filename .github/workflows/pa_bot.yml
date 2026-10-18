@@ -48,8 +48,9 @@ jobs:
       - run: pip install requests
       - name: Botu calistir
         env:
-          TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          # push ile yapılan test çalışmaları Telegram'a mesaj göndermez (çıktı sonuç dalına yazılır)
+          TG_TOKEN: ${{ github.event_name != 'push' && secrets.TG_TOKEN || '' }}
+          TG_CHAT_ID: ${{ github.event_name != 'push' && secrets.TG_CHAT_ID || '' }}
           OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
           OKX_API_SECRET: ${{ secrets.OKX_API_SECRET }}
           OKX_API_PASSPHRASE: ${{ secrets.OKX_API_PASSPHRASE }}
