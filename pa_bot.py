@@ -354,7 +354,9 @@ def universe(ok):
         log(f"hesaptaki kontrat listesi alınamadı, filtresiz taranıyor: {e}")
         ok_set = None
     if ok_set is None:
-        return p.get_symbols()
+        out = p.get_symbols()
+        log("Taranan: " + " ".join(short(x) for x in out))
+        return out
     p.MAX_SYMBOLS = 10 ** 6
     try:
         allsyms = p.get_symbols()
@@ -363,6 +365,7 @@ def universe(ok):
     out = [x for x in allsyms if x in ok_set]
     if len(out) < len(allsyms):
         log(f"{len(allsyms) - len(out)} coin bu hesapta işlem görmediği için taranmadı")
+    log("Taranan: " + " ".join(short(x) for x in out[:n]))
     return out[:n]
 
 
