@@ -1,0 +1,37 @@
+name: PA Urun Kontrolu
+
+# pa_urun.py: OKX gerçek/demo ürün listesi ve kategori kontrolü. Mesaj göndermez, emir vermez.
+
+on:
+  push:
+    branches: [pa-strateji]
+    paths: [pa_urun.py]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  kontrol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - run: python pa_urun.py
+      - name: Sonucu pa-test-sonuclari dalina ekle
+        if: always()
+        run: |
+          [ -f urun_sonuc.md ] || exit 0
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git clone -q --depth 1 -b pa-test-sonuclari "$URL" /tmp/sonuc
+          cp urun_sonuc.md /tmp/sonuc/
+          cd /tmp/sonuc
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add urun_sonuc.md
+          git commit -q -m "Ürün kontrolü (çalışma ${{ github.run_id }})" || exit 0
+          git push -q origin HEAD:pa-test-sonuclari
