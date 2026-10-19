@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "auto / daily / hourly"
+        description: "auto / daily / hourly / weekly"
         default: "auto"
 
 permissions:

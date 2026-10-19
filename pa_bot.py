@@ -338,6 +338,7 @@ def paper_check(st, now):
                 pp["bal"] += pnl - fee
                 R = pnl / ps["risk"] if ps["risk"] else 0
                 pp["closed"].append(dict(inst=inst, dir=d, pnl=pnl - fee, R=R, t=t))
+                st.setdefault("log", []).append(dict(inst=inst, dir=d, pnl=pnl - fee, R=R, t=int(t)))
                 note(f"📕 [KAĞIT] {short(inst)} {'LONG' if d == 1 else 'SHORT'} kapandı (stop {fp(ps['stop'])}): "
                      f"{pnl - fee:+.2f} USDT ({R:+.1f}R) · sanal bakiye {pp['bal']:.2f}")
                 del pp["pos"][inst]
@@ -559,6 +560,7 @@ def daily(ok, st, now):
             note("📝 (yapılacaktı) " + line)
         else:
             qty = contracts * ctval
+            st.setdefault("opened", []).append(int(now))
             st["paper"]["pos"][inst] = dict(dir=d, entry=px, stop=stop, qty=qty, risk=real_risk, t_in=int(now),
                                              checked=int(now))
             note("📝 [KAĞIT] " + line)
@@ -598,12 +600,14 @@ def hourly(ok, st, now):
             note(f"📗 Pozisyon açıldı: {'🟢 LONG' if ps['dir'] == 1 else '🔴 SHORT'} {short(inst)} · "
                  f"ortalama {fp(ps['avg'])} · {ps['sz']:g} kontrat" + (f" · stop {fp(e['stop'])}" if e.get("stop") else ""))
             known[inst] = dict(dir=ps["dir"], avg=ps["avg"], t=ps["ctime"], risk=e.get("risk"))
+            st.setdefault("opened", []).append(int(now))
             changed = True
     # kapanan pozisyonlar
     for inst in list(known):
         if inst not in cur:
             k = known.pop(inst)
             pnl_s = ""
+            pnl = R = None
             try:
                 h = ok.positions_history(inst)
                 if h:
@@ -613,6 +617,7 @@ def hourly(ok, st, now):
             except OkxError as e:
                 log(f"geçmiş alınamadı: {e}")
             note(f"📕 Pozisyon kapandı: {'LONG' if k['dir'] == 1 else 'SHORT'} {short(inst)}{pnl_s}")
+            st.setdefault("log", []).append(dict(inst=inst, dir=k["dir"], pnl=pnl, R=R, t=int(now)))
             st.get("entries", {}).pop(inst, None)
             changed = True
     # stopsuz pozisyon kontrolü
@@ -645,6 +650,54 @@ def hourly(ok, st, now):
 
 
 # ---------------- Ana akış ----------------
+def weekly_summary(ok, st, now):
+    """Haftalık özet: bakiye, bu hafta ve başlangıçtan beri işlemler, açık pozisyonlar."""
+    if ok.has_keys:
+        eq, avail = ok.balance()
+        if CAPITAL > 0:
+            eq, avail = virtual_balance(st, eq, avail)
+        acik = [f"{'L' if x['dir'] == 1 else 'S'} {short(x['inst'])} ({x['upl']:+.2f})" for x in ok.positions()]
+        ad = "DEMO" if DEMO else "GERÇEK HESAP"
+    else:
+        pp = st.setdefault("paper", {"bal": DRY_BALANCE, "pos": {}, "closed": []})
+        eq = pp["bal"]
+        acik = []
+        for inst, ps in pp["pos"].items():
+            try:
+                u = (ok.last_price(inst) - ps["entry"]) * ps["dir"] * ps["qty"]
+                acik.append(f"{'L' if ps['dir'] == 1 else 'S'} {short(inst)} ({u:+.2f})")
+            except Exception:
+                acik.append(f"{'L' if ps['dir'] == 1 else 'S'} {short(inst)}")
+        ad = "KAĞIT İŞLEM"
+    start = START_BALANCE or st.get("start_balance") or (CAPITAL if ok.has_keys and CAPITAL > 0 else DRY_BALANCE)
+    week0 = now - 7 * 86400
+    lg = st.get("log", [])
+
+    def ozet(rows):
+        if not rows:
+            return "işlem yok"
+        kaz = sum(1 for r in rows if (r.get("pnl") or 0) > 0)
+        pnl = sum(r.get("pnl") or 0 for r in rows)
+        rr = [r["R"] for r in rows if r.get("R") is not None]
+        return (f"{len(rows)} kapanan · {kaz} kazanan / {len(rows) - kaz} kaybeden · {pnl:+.2f} USDT"
+                + (f" · toplam {sum(rr):+.1f}R" if rr else ""))
+
+    hafta = [r for r in lg if r["t"] >= week0]
+    acilan = sum(1 for t in st.get("opened", []) if t >= week0)
+    best = max(lg, key=lambda r: r.get("R") or -99, default=None)
+    gun = max(1, int((now - st.get("started", now)) / 86400))
+    msg = [f"📅 Haftalık özet — {ad}",
+           f"💰 Bakiye {eq:.2f} USDT · başlangıç {start:.2f} · {(eq / start - 1) * 100:+.1f}% ({gun} gün)",
+           f"Bu hafta: {acilan} açılan · {ozet(hafta)}",
+           f"Başlangıçtan beri: {ozet(lg)}",
+           f"Açık pozisyonlar ({len(acik)}/{MAX_POS}): " + (", ".join(acik) if acik else "yok")]
+    if best and (best.get("R") or 0) > 0:
+        msg.append(f"En iyi işlem: {short(best['inst'])} {best['R']:+.1f}R")
+    msg.append("Not: Bu strateji işlemlerin çoğunu küçük kayıpla kapatır; kâr ara sıra gelen büyük trendlerden gelir. "
+               "Birkaç haftalık sonuç tek başına bir şey kanıtlamaz.")
+    return "\n".join(msg)
+
+
 def connection_report(ok, st):
     msg = "✅ Trend botu bağlantı testi. "
     if not ok.has_keys:
@@ -687,6 +740,9 @@ def main():
                 log(f"Hesap bağlamı değişti ({st.get('ctx')} → {ctx}): durum sıfırlandı")
             st.clear()
             st["ctx"] = ctx
+            st["started"] = int(now)
+        st.setdefault("started", int(now))
+        st.setdefault("opened", [int(v.get("t") or now) for v in st.get("known", {}).values()])
         if mode == "test" or (ok.has_keys and not st.get("baglanti_raporu")):
             p.send(connection_report(ok, st))
             if ok.has_keys:
@@ -724,12 +780,21 @@ def main():
             p.send("🧹 Trend botu: tüm pozisyonlar kapatıldı" + (DEMO and " (DEMO)" or "") + "\n" +
                    ("\n".join("• " + x for x in sat) if sat else "Açık pozisyon yoktu."))
             return
+        if mode == "weekly":
+            p.send(weekly_summary(ok, st, now))
+            return
         if mode == "daily":
             daily(ok, st, now)
             p.send("\n".join(msgs) + "\nℹ️ Otomatik işlem botu, yatırım tavsiyesi değildir.")
         else:
             if hourly(ok, st, now) and msgs:
                 p.send("\n".join(msgs))
+            # Pazar 21:00 TR'den sonraki ilk saatlik çalışmada haftalık özet (haftada bir kez)
+            utc = datetime.fromtimestamp(now, timezone.utc)
+            wk = utc.strftime("%G-%V")
+            if utc.weekday() == 6 and utc.hour >= 18 and st.get("last_weekly") != wk:
+                p.send(weekly_summary(ok, st, now))
+                st["last_weekly"] = wk
     except Exception as e:
         traceback.print_exc()
         p.send(f"❌ Trend botu hatası ({mode}): {e}")
