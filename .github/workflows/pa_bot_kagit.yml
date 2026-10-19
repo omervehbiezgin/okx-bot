@@ -1,0 +1,61 @@
+name: OKX Trend Botu Kagit
+
+# Kağıt işlem: pa_bot.py OKX anahtarı OLMADAN çalışır (emir gönderemez). Gerçek piyasanın en hacimli 80 kripto
+# kontratını gerçek fiyatlarla tarar, işlemleri sanal 1000 USDT bakiyeyle kâğıt üstünde açar ve stoplarını takip eder.
+# Demo hesaptaki bottan (pa_bot.yml) tamamen ayrıdır: ayrı durum dosyası cache'i ve concurrency grubu.
+
+on:
+  schedule:
+    - cron: "4 0 * * *"
+    - cron: "34 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "auto / daily / hourly"
+        default: "auto"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: okx-pa-bot-kagit
+  cancel-in-progress: false
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Bot durumunu geri yukle
+        uses: actions/cache/restore@v4
+        with:
+          path: bot_state.json
+          key: pa-kagit-state-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            pa-kagit-state-${{ github.ref_name }}-
+            pa-kagit-state-
+      - run: pip install requests
+      - name: Botu calistir
+        env:
+          # push ile yapılan test çalışmaları Telegram'a mesaj göndermez (çıktı sonuç dalına yazılır)
+          # Ayrı Telegram botu: PA_TG_TOKEN (ve isterseniz PA_TG_CHAT_ID) tanımlıysa o kullanılır, yoksa eski bot
+          TG_TOKEN: ${{ github.event_name != 'push' && (secrets.PA_TG_TOKEN || secrets.TG_TOKEN) || '' }}
+          TG_CHAT_ID: ${{ github.event_name != 'push' && (secrets.PA_TG_CHAT_ID || secrets.TG_CHAT_ID) || '' }}
+          PA_LIVE: '0'
+          PA_DEMO: '0'
+          PA_DRY_BALANCE: '1000'
+          PA_RISK: ${{ vars.PA_RISK }}
+          PA_MAX_POS: ${{ vars.PA_MAX_POS }}
+          BOT_MODE: ${{ inputs.mode || (github.event_name == 'push' && 'daily') || 'auto' }}
+        run: python pa_bot.py 2>&1 | tee bot_log.txt; exit ${PIPESTATUS[0]}
+        shell: bash
+      - name: Bot durumunu kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: bot_state.json
+          key: pa-kagit-state-${{ github.ref_name }}-${{ github.run_id }}
