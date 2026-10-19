@@ -191,7 +191,12 @@ class Okx:
     # --- genel ---
     def instruments(self):
         if self._inst is None:
-            data = p.api("/api/v5/public/instruments", {"instType": "SWAP"})
+            # Kontrat büyüklüğü (ctVal), lot ve tick hesaba göre farklı olabilir (demo ≠ gerçek): anahtar varsa
+            # bu hesabın listesi kullanılır
+            if self.has_keys:
+                data = self.req("GET", "/api/v5/public/instruments", {"instType": "SWAP"})
+            else:
+                data = p.api("/api/v5/public/instruments", {"instType": "SWAP"})
             self._inst = {d["instId"]: d for d in data}
         return self._inst
 
@@ -285,6 +290,16 @@ class Okx:
 
     def cancel_algos(self, items):
         return self.req("POST", "/api/v5/trade/cancel-algos", body=[{"instId": i, "algoId": a} for i, a in items])
+
+    def reduce(self, inst, d, sz):
+        body = {"instId": inst, "tdMode": "isolated", "side": "sell" if d == 1 else "buy", "ordType": "market",
+                "sz": str(sz)}
+        ps = self.pos_side(d)
+        if ps:
+            body["posSide"] = ps
+        else:
+            body["reduceOnly"] = True
+        return self.req("POST", "/api/v5/trade/order", body=body)[0]
 
     def close_position(self, inst, d):
         body = {"instId": inst, "mgnMode": "isolated"}
@@ -620,6 +635,28 @@ def hourly(ok, st, now):
             st.setdefault("log", []).append(dict(inst=inst, dir=k["dir"], pnl=pnl, R=R, t=int(now)))
             st.get("entries", {}).pop(inst, None)
             changed = True
+    # büyüklük güvenliği: pozisyonun stopa kadar riski planlanandan %50+ fazlaysa fazlası piyasa emriyle azaltılır
+    for inst, ps in cur.items():
+        e = st.get("entries", {}).get(inst)
+        info = inst_info.get(inst)
+        if not e or not e.get("risk") or not e.get("stop") or not info or not LIVE:
+            continue
+        ctval, lot = float(info["ctVal"]), float(info["lotSz"])
+        per = ctval * abs(ps["avg"] - e["stop"])
+        if per <= 0:
+            continue
+        actual = ps["sz"] * per
+        if actual > 1.5 * e["risk"]:
+            keep = max(round_step(e["risk"] / per, lot, up=False), float(info["minSz"]))
+            cut = round_step(ps["sz"] - keep, lot, up=False)
+            if cut > 0:
+                try:
+                    ok.reduce(inst, ps["dir"], cut)
+                    note(f"⚠️ {short(inst)}: pozisyon planlanandan büyüktü (stopa kadar risk {actual:.2f} USDT, plan "
+                         f"{e['risk']:.2f}). {cut:g} kontrat kapatıldı, {keep:g} kontrat kaldı.")
+                    changed = True
+                except OkxError as ex:
+                    note(f"❌ {short(inst)}: büyük pozisyon azaltılamadı ({ex}) — lütfen elle kontrol edin")
     # stopsuz pozisyon kontrolü
     for inst, ps in cur.items():
         if not any(x["instId"] == inst for x in stops):
