@@ -1,19 +1,19 @@
 Mod: daily · anahtar: yok · canlı: True · demo: True
-🌅 Trend botu — günlük çalışma (KURU ÇALIŞMA) · 18.10.2026 günlük mumu
+🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 18.10.2026 günlük mumu
 💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-Taranan: ETH BTC ZEC SOL NEAR XRP DOGE PUMP SAND WLD HYPE STRK PEPE FIL UNI SUI TIA HBAR APR CT DNA TRUMP ENA INJ BNB LIT ARB ADA LINK LTC AVAX BCH PONS AAVE AKE BAT OKB XPL TAO DOT MAGIC ONDO AEON ZRO CAP VVV OP PENGU APT CRV GRASS USELESS PYTH CASHCAT ASTER W BASED S RAY ETHFI SHIB XLM DASH QUANT MUBARAK TRX AERO DGAI SENT STX MON LDO ETC EIGEN A NIGHT ZK BILL TRUTH DOS
+Taranan: ETH BTC ZEC SOL NEAR XRP DOGE PUMP SAND WLD HYPE STRK PEPE FIL UNI SUI TIA HBAR APR CT DNA TRUMP ENA INJ BNB LIT ARB ADA LINK LTC AVAX BCH PONS AAVE AKE OKB BAT XPL TAO DOT MAGIC ONDO AEON ZRO CAP VVV OP PENGU APT CRV GRASS USELESS PYTH CASHCAT ASTER BASED W S RAY ETHFI SHIB XLM DASH QUANT MUBARAK AERO TRX DGAI SENT STX MON LDO ETC EIGEN A NIGHT ZK BILL TRUTH DOS
 🔎 80 coin tarandı, 3 sinyal. Açık/bekleyen: 8/8
 • 🔴 SHORT TRUMP: yer yok (8 pozisyon dolu), atlandı
 • 🔴 SHORT W: yer yok (8 pozisyon dolu), atlandı
 • 🔴 SHORT A: yer yok (8 pozisyon dolu), atlandı
-📊 [KURU] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
-🌅 Trend botu — günlük çalışma (KURU ÇALIŞMA) · 18.10.2026 günlük mumu
+📊 [KAĞIT] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
+🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 18.10.2026 günlük mumu
 💰 Bakiye: 100.00 USDT (başlangıç 100.00)
 🔎 80 coin tarandı, 3 sinyal. Açık/bekleyen: 8/8
 • 🔴 SHORT TRUMP: yer yok (8 pozisyon dolu), atlandı
 • 🔴 SHORT W: yer yok (8 pozisyon dolu), atlandı
 • 🔴 SHORT A: yer yok (8 pozisyon dolu), atlandı
-📊 [KURU] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
+📊 [KAĞIT] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
 ℹ️ Otomatik işlem botu, yatırım tavsiyesi değildir.
 
 UYARI: TG_TOKEN veya TG_CHAT_ID tanımlı değil, Telegram'a mesaj gönderilmedi!
