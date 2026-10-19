@@ -79,5 +79,7 @@
   "closed": []
  },
  "start_balance": 100.0,
- "last_daily": 1792281600
+ "last_daily": 1792281600,
+ "started": 1792387144,
+ "opened": []
 }
