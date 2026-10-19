@@ -676,7 +676,7 @@ def main():
     mode = os.getenv("BOT_MODE", "auto") or "auto"
     if mode == "auto":
         hour = datetime.fromtimestamp(now, timezone.utc).hour
-        mode = "daily" if (st.get("last_daily") != last_closed_day_open(now) and hour < 6) else "hourly"
+        mode = "daily" if (st.get("last_daily") != last_closed_day_open(now) and hour < 2) else "hourly"
     log(f"Mod: {mode} · anahtar: {'var' if ok.has_keys else 'yok'} · canlı: {LIVE} · demo: {DEMO}")
     try:
         # Hesap bağlamı değişirse (kuru çalışma → demo → gerçek) eski durum taşınmaz: başlangıç bakiyesi, acil fren ve
