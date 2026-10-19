@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "auto / daily / hourly / test / closeall (tüm pozisyonları kapatır)"
+        description: "auto / daily / hourly / test / weekly / closeall (tüm pozisyonları kapatır)"
         default: "auto"
 
 permissions:
