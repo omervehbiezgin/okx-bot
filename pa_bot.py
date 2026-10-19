@@ -338,11 +338,15 @@ def paper_check(st, now):
                 pp["bal"] += pnl - fee
                 R = pnl / ps["risk"] if ps["risk"] else 0
                 pp["closed"].append(dict(inst=inst, dir=d, pnl=pnl - fee, R=R, t=t))
-                note(f"📕 [KURU] {short(inst)} {'LONG' if d == 1 else 'SHORT'} kapandı (stop {fp(ps['stop'])}): "
+                note(f"📕 [KAĞIT] {short(inst)} {'LONG' if d == 1 else 'SHORT'} kapandı (stop {fp(ps['stop'])}): "
                      f"{pnl - fee:+.2f} USDT ({R:+.1f}R) · sanal bakiye {pp['bal']:.2f}")
                 del pp["pos"][inst]
                 break
             ps["checked"] = t + 3600
+
+
+# OKX'te kripto kategorisinde listelenen ama altına bağlı tokenler (hisse ve emtia kontratları zaten kategoriyle elenir)
+NON_CRYPTO = {"PAXG", "XAUT", "XAU", "XAG", "KAU", "KAG", "DGX", "CGO"}
 
 
 def universe(ok):
@@ -354,7 +358,7 @@ def universe(ok):
         log(f"hesaptaki kontrat listesi alınamadı, filtresiz taranıyor: {e}")
         ok_set = None
     if ok_set is None:
-        out = p.get_symbols()
+        out = [x for x in p.get_symbols() if x.split("-")[0] not in NON_CRYPTO][:n]
         log("Taranan: " + " ".join(short(x) for x in out))
         return out
     p.MAX_SYMBOLS = 10 ** 6
@@ -362,7 +366,7 @@ def universe(ok):
         allsyms = p.get_symbols()
     finally:
         p.MAX_SYMBOLS = n
-    out = [x for x in allsyms if x in ok_set]
+    out = [x for x in allsyms if x in ok_set and x.split("-")[0] not in NON_CRYPTO]
     if len(out) < len(allsyms):
         log(f"{len(allsyms) - len(out)} coin bu hesapta işlem görmediği için taranmadı")
     log("Taranan: " + " ".join(short(x) for x in out[:n]))
@@ -377,7 +381,7 @@ def virtual_balance(st, eq, avail):
 
 # ---------------- Günlük rutin ----------------
 def daily(ok, st, now):
-    mode = "CANLI" if (ok.has_keys and LIVE) else ("GÖZLEM" if ok.has_keys else "KURU ÇALIŞMA")
+    mode = "CANLI" if (ok.has_keys and LIVE) else ("GÖZLEM" if ok.has_keys else "KAĞIT İŞLEM (gerçek piyasa, emir yok)")
     if DEMO and ok.has_keys:
         mode = "DEMO " + mode
     day_open = last_closed_day_open(now)
@@ -449,7 +453,7 @@ def daily(ok, st, now):
                          f"{'' if LIVE else ' (yapılacaktı)'}")
                 else:
                     st["paper"]["pos"][inst]["stop"] = new
-                    note(f"🔒 [KURU] {short(inst)}: stop {fp(cur)} → {fp(new)}")
+                    note(f"🔒 [KAĞIT] {short(inst)}: stop {fp(cur)} → {fp(new)}")
         except Exception as e:
             note(f"⚠️ {short(inst)} stop güncellemesinde hata: {e}")
 
@@ -557,7 +561,7 @@ def daily(ok, st, now):
             qty = contracts * ctval
             st["paper"]["pos"][inst] = dict(dir=d, entry=px, stop=stop, qty=qty, risk=real_risk, t_in=int(now),
                                              checked=int(now))
-            note("📝 [KURU] " + line)
+            note("📝 [KAĞIT] " + line)
         used_margin += margin
         acilan += 1
         held.add(inst)
@@ -567,7 +571,7 @@ def daily(ok, st, now):
         pp = st["paper"]
         acik = ", ".join(f"{short(k)} {'L' if v['dir'] == 1 else 'S'} (stop {fp(v['stop'])})" for k, v in pp["pos"].items())
         kap = pp["closed"]
-        note(f"📊 [KURU] sanal bakiye {pp['bal']:.2f} USDT · açık: {acik or 'yok'} · kapanan işlem: {len(kap)}"
+        note(f"📊 [KAĞIT] sanal bakiye {pp['bal']:.2f} USDT · açık: {acik or 'yok'} · kapanan işlem: {len(kap)}"
              + (f" (toplam {sum(x['pnl'] for x in kap):+.2f} USDT)" if kap else ""))
     st["last_daily"] = day_open
 
