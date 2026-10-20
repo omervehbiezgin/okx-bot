@@ -1,0 +1,158 @@
+//@version=5
+// Trend Botu — pa_bot.py ile aynı kurallar (günlük grafik için).
+// Long : günlük kapanış son onaylı tepenin üstünde (onaydan sonraki ilk kapanış) ve kapanış EMA50'nin üstünde.
+// Short: günlük kapanış son onaylı dibin altında ve kapanış EMA50'nin altında.
+// Giriş: kapanış fiyatı. Stop: kırılan seviye ∓ 0,5 ATR14 (stop %0,5–%15 arası değilse işlem yok).
+// Çıkış: stop her gün kapanışta son 10 günün dibine (long) / tepesine (short) çekilir, sadece kâr yönünde.
+//        Hedef (TP) yok. En uzun 60 gün. Risk: bakiyenin %1'i. Kaldıraç: stopa göre, en fazla 10x.
+// Not: Bot aynı anda en fazla 8 coinde pozisyon tutar; bu gösterge tek grafiğe baktığı için o sınırı bilemez.
+// OKX perpetual grafiğinde (ör. OKX:BTCUSDT.P) günlük (1G) zaman diliminde kullanın; günlük mum 03:00 TR'de kapanır.
+indicator("Trend Botu — günlük kırılım + EMA50", shorttitle="Trend Botu", overlay=true, max_labels_count=500)
+
+grpS = "Strateji"
+K       = input.int(3, "Pivot onayı (sağda/solda mum)", minval=1, group=grpS)
+emaLen  = input.int(50, "EMA uzunluğu", group=grpS)
+atrLen  = input.int(14, "ATR uzunluğu", group=grpS)
+sk      = input.float(0.5, "Stop: seviye ∓ ATR ×", step=0.1, group=grpS)
+donN    = input.int(10, "İz süren stop: son N günün dibi/tepesi", group=grpS)
+maxHold = input.int(60, "En uzun tutma (gün)", group=grpS)
+minSp   = input.float(0.5, "En küçük stop %", group=grpS)
+maxSp   = input.float(15.0, "En büyük stop %", group=grpS)
+grpR = "Pozisyon büyüklüğü"
+bal     = input.float(1000, "Bakiye (USDT)", group=grpR)
+riskPct = input.float(1.0, "İşlem başı risk %", step=0.1, group=grpR)
+maxLev  = input.int(10, "En yüksek kaldıraç", group=grpR)
+grpG = "Görünüm"
+showLvl = input.bool(true, "Bekleyen kırılım seviyelerini göster", group=grpG)
+showTbl = input.bool(true, "Bilgi tablosunu göster", group=grpG)
+
+fmt(x) => str.tostring(x, format.mintick)
+sgn(x) => (x >= 0 ? "+" : "") + str.tostring(x, "0.0")
+
+ema50 = ta.ema(close, emaLen)
+atrV  = ta.sma(ta.tr(true), atrLen)   // botla aynı: son 14 günün gerçek aralığının basit ortalaması
+ph    = ta.pivothigh(high, K, K)
+pl    = ta.pivotlow(low, K, K)
+lowN  = ta.lowest(low, donN)
+highN = ta.highest(high, donN)
+
+// Son onaylı tepe/dip; kapanışla bir kez kırılınca kullanılmış sayılır (EMA şartı tutmasa bile)
+var float hiLvl  = na
+var bool  hiUsed = true
+var float loLvl  = na
+var bool  loUsed = true
+if not na(ph)
+    hiLvl  := ph
+    hiUsed := false
+if not na(pl)
+    loLvl  := pl
+    loUsed := false
+
+var int   pos      = 0
+var float entryPx  = na
+var float stopPx   = na
+var float riskPx   = na
+var int   entryBar = na
+var int   nTr  = 0
+var int   nWin = 0
+var float sumR = 0.0
+
+// 1) Açık pozisyon: stop (gün içinde) veya süre doldu mu?
+exitNow = false
+exitPx  = float(na)
+if pos != 0
+    hit = pos == 1 ? low <= stopPx : high >= stopPx
+    if hit
+        exitPx  := pos == 1 ? math.min(stopPx, open) : math.max(stopPx, open)
+        exitNow := true
+    else if bar_index - entryBar >= maxHold
+        exitPx  := close
+        exitNow := true
+if exitNow
+    r = (exitPx - entryPx) * pos / riskPx
+    nTr  += 1
+    nWin += r > 0 ? 1 : 0
+    sumR += r
+    label.new(bar_index, pos == 1 ? high : low, "Çıkış " + fmt(exitPx) + "\n" + sgn(r) + "R",
+         style=pos == 1 ? label.style_label_down : label.style_label_up,
+         color=r > 0 ? color.new(color.teal, 10) : color.new(color.gray, 10), textcolor=color.white, size=size.small)
+    alert("Trend Botu: " + syminfo.ticker + " pozisyon kapandı " + fmt(exitPx) + " (" + sgn(r) + "R)", alert.freq_once_per_bar_close)
+    pos := 0
+
+// 2) İz süren stop: kapanışta son N günün dibine/tepesine (sadece kâr yönünde)
+if pos != 0 and bar_index > entryBar
+    oldStop = stopPx
+    stopPx := pos == 1 ? math.max(stopPx, lowN) : math.min(stopPx, highN)
+    if stopPx != oldStop
+        alert("Trend Botu: " + syminfo.ticker + " stop " + fmt(oldStop) + " → " + fmt(stopPx), alert.freq_once_per_bar_close)
+
+// 3) Yeni sinyal
+longBrk  = not hiUsed and not na(hiLvl) and close > hiLvl
+shortBrk = not loUsed and not na(loLvl) and close < loLvl
+brkHi = hiLvl
+brkLo = loLvl
+if longBrk
+    hiUsed := true
+if shortBrk
+    loUsed := true
+
+newSig = 0
+if pos == 0
+    if longBrk and close > ema50
+        newSig := 1
+    else if shortBrk and close < ema50
+        newSig := -1
+
+if newSig != 0
+    stp = newSig == 1 ? brkHi - sk * atrV : brkLo + sk * atrV
+    sp  = math.abs(close - stp) / close * 100
+    if (close - stp) * newSig > 0 and sp >= minSp and sp <= maxSp
+        pos      := newSig
+        entryPx  := close
+        stopPx   := stp
+        riskPx   := math.abs(close - stp)
+        entryBar := bar_index
+        qty      = math.min(bal * riskPct / 100 / riskPx, 2 * bal / close)
+        notional = qty * close
+        riskUsd  = qty * riskPx
+        lev      = math.max(1, math.min(maxLev, math.floor(1 / (1.5 * sp / 100 + 0.005))))
+        txt = (newSig == 1 ? "LONG" : "SHORT") + " · seviye " + fmt(newSig == 1 ? brkHi : brkLo) + " kırıldı" +
+             "\nGiriş " + fmt(close) + "\nStop " + fmt(stp) + " (%" + str.tostring(sp, "0.00") + ")" +
+             "\nRisk " + str.tostring(riskUsd, "0.00") + " USDT" +
+             "\nMiktar " + str.tostring(qty, "#.####") + " (≈ " + str.tostring(notional, "0.00") + " USDT)" +
+             "\nKaldıraç " + str.tostring(lev) + "x · teminat " + str.tostring(notional / lev, "0.00") + " USDT" +
+             "\nHedef: yok (iz süren stop)"
+        label.new(bar_index, newSig == 1 ? low : high, txt,
+             style=newSig == 1 ? label.style_label_up : label.style_label_down,
+             color=newSig == 1 ? color.new(color.green, 10) : color.new(color.red, 10), textcolor=color.white, size=size.small)
+        alert("Trend Botu: " + syminfo.ticker + " " + txt, alert.freq_once_per_bar_close)
+
+// Çizimler
+plot(ema50, "EMA50", color=color.new(color.orange, 0), linewidth=2)
+plot(showLvl and not hiUsed ? hiLvl : na, "Bekleyen tepe seviyesi", color=color.new(color.green, 40), style=plot.style_linebr)
+plot(showLvl and not loUsed ? loLvl : na, "Bekleyen dip seviyesi", color=color.new(color.red, 40), style=plot.style_linebr)
+plot(pos != 0 ? entryPx : na, "Giriş", color=color.new(color.gray, 20), style=plot.style_linebr)
+plot(pos != 0 ? stopPx : na, "Stop (iz süren)", color=pos == 1 ? color.red : color.green, style=plot.style_linebr, linewidth=2)
+
+// Bilgi tablosu
+var table tb = table.new(position.top_right, 2, 8, bgcolor=color.new(color.black, 25), border_width=1)
+if showTbl and barstate.islast
+    tc = color.white
+    table.cell(tb, 0, 0, "Durum", text_color=tc)
+    table.cell(tb, 1, 0, pos == 1 ? "LONG" : pos == -1 ? "SHORT" : "Pozisyon yok",
+         text_color=pos == 1 ? color.lime : pos == -1 ? color.red : tc)
+    table.cell(tb, 0, 1, "Giriş", text_color=tc)
+    table.cell(tb, 1, 1, pos != 0 ? fmt(entryPx) : "-", text_color=tc)
+    table.cell(tb, 0, 2, "Stop", text_color=tc)
+    table.cell(tb, 1, 2, pos != 0 ? fmt(stopPx) : "-", text_color=tc)
+    table.cell(tb, 0, 3, "Açık kâr/zarar", text_color=tc)
+    table.cell(tb, 1, 3, pos != 0 ? sgn((close - entryPx) * pos / riskPx) + "R · " + str.tostring(bar_index - entryBar) + " gün" : "-", text_color=tc)
+    table.cell(tb, 0, 4, "Bekleyen tepe / dip", text_color=tc)
+    table.cell(tb, 1, 4, (hiUsed ? "-" : fmt(hiLvl)) + " / " + (loUsed ? "-" : fmt(loLvl)), text_color=tc)
+    table.cell(tb, 0, 5, "Grafikteki işlemler", text_color=tc)
+    table.cell(tb, 1, 5, str.tostring(nTr) + " · kazanan %" + (nTr > 0 ? str.tostring(100.0 * nWin / nTr, "0") : "0") + " · " + sgn(sumR) + "R", text_color=tc)
+    table.cell(tb, 0, 6, "EMA50 tarafı", text_color=tc)
+    table.cell(tb, 1, 6, close > ema50 ? "Üstünde (sadece long)" : "Altında (sadece short)", text_color=tc)
+    if not timeframe.isdaily
+        table.cell(tb, 0, 7, "Uyarı", text_color=color.orange)
+        table.cell(tb, 1, 7, "Bu gösterge günlük (1G) grafik içindir", text_color=color.orange)
