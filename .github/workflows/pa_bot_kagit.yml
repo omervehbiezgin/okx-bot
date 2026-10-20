@@ -6,8 +6,10 @@ name: OKX Trend Botu Kagit
 
 on:
   schedule:
-    - cron: "4 0 * * *"
-    - cron: "34 * * * *"
+    # GitHub zamanlanmış çalışmaları yoğunlukta geciktirip atlayabiliyor: günlük rutin için 00:04–03:54 UTC arası
+    # her 10 dakikada bir deneme (bot günde bir kez çalıştırır), bakım için saatte 3 deneme
+    - cron: "4,14,24,34,44,54 0-3 * * *"
+    - cron: "7,27,47 * * * *"
   workflow_dispatch:
     inputs:
       mode:
