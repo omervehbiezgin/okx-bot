@@ -55,6 +55,7 @@ DON_N = 10                  # günlük iz süren stop: son N günün dibi/tepesi
 MAX_HOLD_DAYS = 60
 MIN_SP, MAX_SP = 0.5, 15.0  # stop mesafesi % sınırları
 ENTRY_SLIP = 0.001          # limit fiyatı: son fiyattan %0,1 aleyhe (hemen dolması için)
+REDUCE_SLIP = 0.005         # fazla pozisyon azaltırken kabul edilen en fazla kayma
 ENTRY_TIMEOUT = 3600        # dolmayan giriş emri bu kadar saniye sonra iptal
 MAX_NOTIONAL_X = 2.0        # tek pozisyon büyüklüğü en fazla bakiyenin bu katı
 MAX_MARGIN_USE = 0.8        # toplam teminat en fazla bakiyenin bu oranı
@@ -291,9 +292,13 @@ class Okx:
     def cancel_algos(self, items):
         return self.req("POST", "/api/v5/trade/cancel-algos", body=[{"instId": i, "algoId": a} for i, a in items])
 
-    def reduce(self, inst, d, sz):
-        body = {"instId": inst, "tdMode": "isolated", "side": "sell" if d == 1 else "buy", "ordType": "market",
-                "sz": str(sz)}
+    def reduce(self, inst, d, sz, tick):
+        """Pozisyonu fiyat sınırlı (en fazla %0,5 kayma) IOC emirle azaltır; sığ defterde fiyatı itip stopu tetiklemez.
+        Dolmayan kısım iptal olur, bir sonraki kontrolde yeniden denenir."""
+        last = self.last_price(inst)
+        px = round_step(last * (1 - d * REDUCE_SLIP), tick, up=(d == -1))
+        body = {"instId": inst, "tdMode": "isolated", "side": "sell" if d == 1 else "buy", "ordType": "ioc",
+                "px": str(px), "sz": str(sz)}
         ps = self.pos_side(d)
         if ps:
             body["posSide"] = ps
@@ -651,9 +656,10 @@ def hourly(ok, st, now):
             cut = round_step(ps["sz"] - keep, lot, up=False)
             if cut > 0:
                 try:
-                    ok.reduce(inst, ps["dir"], cut)
+                    ok.reduce(inst, ps["dir"], cut, float(info["tickSz"]))
                     note(f"⚠️ {short(inst)}: pozisyon planlanandan büyüktü (stopa kadar risk {actual:.2f} USDT, plan "
-                         f"{e['risk']:.2f}). {cut:g} kontrat kapatıldı, {keep:g} kontrat kaldı.")
+                         f"{e['risk']:.2f}). {cut:g} kontrat için en fazla %{REDUCE_SLIP * 100:.1f} kaymalı kapatma "
+                         f"emri verildi (hedef {keep:g} kontrat); dolmayan kısım sonraki kontrolde yeniden denenir.")
                     changed = True
                 except OkxError as ex:
                     note(f"❌ {short(inst)}: büyük pozisyon azaltılamadı ({ex}) — lütfen elle kontrol edin")
