@@ -3,7 +3,7 @@ name: OKX Trend Botu
 # pa_bot.py: günlük trend stratejisi botu. Mevcut "OKX Hacim Tarayici" ile hiçbir şey paylaşmaz
 # (ayrı dosya, ayrı durum dosyası bot_state.json, ayrı cache ve concurrency grubu); sadece aynı Telegram botuna yazar.
 #
-# Çalışma: her gün 00:04 UTC (03:04 TR) günlük rutin, her saatin 34. dakikasında bakım.
+# Çalışma: günlük rutin 03:04 TR hedefli (gecikmeye karşı 07:00 TR’ye kadar denenir), saatte 3 kez bakım.
 # Modlar: OKX anahtarı yoksa KURU ÇALIŞMA; anahtar varsa GÖZLEM; repo değişkeni PA_LIVE=1 ise CANLI.
 # Gerekli secret'lar: TG_TOKEN, TG_CHAT_ID (var olanlar), OKX_API_KEY, OKX_API_SECRET, OKX_API_PASSPHRASE.
 # İsteğe bağlı repo değişkenleri (Settings → Secrets and variables → Actions → Variables):
@@ -12,8 +12,10 @@ name: OKX Trend Botu
 
 on:
   schedule:
-    - cron: "4 0 * * *"
-    - cron: "34 * * * *"
+    # GitHub zamanlanmış çalışmaları yoğunlukta geciktirip atlayabiliyor: günlük rutin için 00:04–03:54 UTC arası
+    # her 10 dakikada bir deneme (bot günde bir kez çalıştırır), bakım için saatte 3 deneme
+    - cron: "4,14,24,34,44,54 0-3 * * *"
+    - cron: "7,27,47 * * * *"
   push:
     branches: [pa-strateji]
     paths: [pa_bot.py, .github/workflows/pa_bot.yml]
