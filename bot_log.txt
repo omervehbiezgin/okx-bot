@@ -1,15 +1,35 @@
 Mod: daily · anahtar: yok · canlı: True · demo: True
-🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 19.10.2026 günlük mumu
-💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-Taranan: ETH BTC ZEC SOL NEAR WLD XRP PUMP DOGE CT HYPE PEPE STRK ARB FIL SUI UNI SAND ENA BAT TRUMP APR BNB TIA INJ DNA AAVE BCH LIT ZRO ADA LINK DOT AVAX ONDO AKE LTC CRV TAO PONS OKB VVV MAGIC PENGU OP XPL GRVT HBAR CAP WLFI S RAY DASH APT GRASS A PYTH CHIP ASTER STX USELESS ETHFI AERO W ENSO SHIB XLM MUBARAK CASHCAT QUANT TRX ETC AEON
-🔎 73 coin tarandı, 1 sinyal. Açık/bekleyen: 8/8
-• 🔴 SHORT WLFI: yer yok (8 pozisyon dolu), atlandı
-📊 [KAĞIT] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
-🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 19.10.2026 günlük mumu
-💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-🔎 73 coin tarandı, 1 sinyal. Açık/bekleyen: 8/8
-• 🔴 SHORT WLFI: yer yok (8 pozisyon dolu), atlandı
-📊 [KAĞIT] sanal bakiye 100.00 USDT · açık: ETH S (stop 2454.31), SUI S (stop 1.0362), ENA S (stop 0.20479), ADA S (stop 0.2324), LINK S (stop 12.403), XPL S (stop 0.08281), ONDO S (stop 0.4576), PENGU S (stop 0.007871) · kapanan işlem: 0
+🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 20.10.2026 günlük mumu
+📕 [KAĞIT] ETH SHORT kapandı (stop 2454.31): -0.94 USDT (-1.0R) · sanal bakiye 99.06
+📕 [KAĞIT] SUI SHORT kapandı (stop 1.0362): -0.97 USDT (-1.0R) · sanal bakiye 98.09
+📕 [KAĞIT] LINK SHORT kapandı (stop 12.403): -0.95 USDT (-1.0R) · sanal bakiye 97.14
+📕 [KAĞIT] ONDO SHORT kapandı (stop 0.4576): -0.99 USDT (-1.0R) · sanal bakiye 96.15
+📕 [KAĞIT] PENGU SHORT kapandı (stop 0.007871): -0.98 USDT (-1.0R) · sanal bakiye 95.18
+💰 Bakiye: 95.18 USDT (başlangıç 100.00)
+Taranan: ETH BTC ZEC SOL DOOD NEAR WLD PEPE XRP DOGE PUMP HYPE UNI STRK IOST SUI ARB FIL CT AKE BAT APR TIA ENA TRUMP BCH LIT INJ AAVE GRVT ADA BNB LTC ONDO ZRO COMP DNA AVAX LINK TAO SAND PENGU APT CRV OKB PONS USELESS MEW DOT XPL CHIP VVV OP MAGIC XLM RAY AERO HBAR CASHCAT CAP GRASS ASTER STX DASH SHIB DOS W JUP LAB ETHFI WLFI ICP OL MUBARAK JTO TRX PYTH ENSO ETC SOPH
+🔎 80 coin tarandı, 6 sinyal. Açık/bekleyen: 3/8
+• 🟢 LONG DOOD: stop mesafesi %48.09 sınır dışında, atlandı
+📝 [KAĞIT] 🟢 LONG WLD · seviye 0.5472 kırıldı · giriş 0.5845 · stop 0.5192 (%11.17) · 14 kontrat ≈ 8.18 USDT · 5x → teminat 1.64 USDT · risk 0.91 USDT
+📝 [KAĞIT] 🟢 LONG PEPE · seviye 4.33e-06 kırıldı · giriş 4.477e-06 · stop 4.168e-06 (%6.90) · 0.3 kontrat ≈ 13.43 USDT · 9x → teminat 1.49 USDT · risk 0.93 USDT
+• 🟢 LONG IOST: stop mesafesi %33.97 sınır dışında, atlandı
+📝 [KAĞIT] 🟢 LONG GRVT · seviye 0.23827 kırıldı · giriş 0.26327 · stop 0.22971 (%12.75) · 2 kontrat ≈ 5.27 USDT · 5x → teminat 1.05 USDT · risk 0.67 USDT
+📝 [KAĞIT] 🟢 LONG COMP · seviye 25.34 kırıldı · giriş 25.85 · stop 24.45 (%5.42) · 6 kontrat ≈ 15.51 USDT · 10x → teminat 1.55 USDT · risk 0.84 USDT
+📊 [KAĞIT] sanal bakiye 95.18 USDT · açık: ENA S (stop 0.20479), ADA S (stop 0.2324), XPL S (stop 0.08281), WLD L (stop 0.5192), PEPE L (stop 4.168e-06), GRVT L (stop 0.22971), COMP L (stop 24.45) · kapanan işlem: 5 (toplam -4.82 USDT)
+🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 20.10.2026 günlük mumu
+📕 [KAĞIT] ETH SHORT kapandı (stop 2454.31): -0.94 USDT (-1.0R) · sanal bakiye 99.06
+📕 [KAĞIT] SUI SHORT kapandı (stop 1.0362): -0.97 USDT (-1.0R) · sanal bakiye 98.09
+📕 [KAĞIT] LINK SHORT kapandı (stop 12.403): -0.95 USDT (-1.0R) · sanal bakiye 97.14
+📕 [KAĞIT] ONDO SHORT kapandı (stop 0.4576): -0.99 USDT (-1.0R) · sanal bakiye 96.15
+📕 [KAĞIT] PENGU SHORT kapandı (stop 0.007871): -0.98 USDT (-1.0R) · sanal bakiye 95.18
+💰 Bakiye: 95.18 USDT (başlangıç 100.00)
+🔎 80 coin tarandı, 6 sinyal. Açık/bekleyen: 3/8
+• 🟢 LONG DOOD: stop mesafesi %48.09 sınır dışında, atlandı
+📝 [KAĞIT] 🟢 LONG WLD · seviye 0.5472 kırıldı · giriş 0.5845 · stop 0.5192 (%11.17) · 14 kontrat ≈ 8.18 USDT · 5x → teminat 1.64 USDT · risk 0.91 USDT
+📝 [KAĞIT] 🟢 LONG PEPE · seviye 4.33e-06 kırıldı · giriş 4.477e-06 · stop 4.168e-06 (%6.90) · 0.3 kontrat ≈ 13.43 USDT · 9x → teminat 1.49 USDT · risk 0.93 USDT
+• 🟢 LONG IOST: stop mesafesi %33.97 sınır dışında, atlandı
+📝 [KAĞIT] 🟢 LONG GRVT · seviye 0.23827 kırıldı · giriş 0.26327 · stop 0.22971 (%12.75) · 2 kontrat ≈ 5.27 USDT · 5x → teminat 1.05 USDT · risk 0.67 USDT
+📝 [KAĞIT] 🟢 LONG COMP · seviye 25.34 kırıldı · giriş 25.85 · stop 24.45 (%5.42) · 6 kontrat ≈ 15.51 USDT · 10x → teminat 1.55 USDT · risk 0.84 USDT
+📊 [KAĞIT] sanal bakiye 95.18 USDT · açık: ENA S (stop 0.20479), ADA S (stop 0.2324), XPL S (stop 0.08281), WLD L (stop 0.5192), PEPE L (stop 4.168e-06), GRVT L (stop 0.22971), COMP L (stop 24.45) · kapanan işlem: 5 (toplam -4.82 USDT)
 ℹ️ Otomatik işlem botu, yatırım tavsiyesi değildir.
 
 UYARI: TG_TOKEN veya TG_CHAT_ID tanımlı değil, Telegram'a mesaj gönderilmedi!
