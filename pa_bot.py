@@ -142,6 +142,11 @@ def leverage_for(sp):
     return max(1, min(10, lev))
 
 
+def num(x):
+    """Sayıyı OKX'in kabul ettiği düz ondalık metne çevirir (4.536e-06 → 0.000004536)."""
+    return format(Decimal(repr(float(x))), "f")
+
+
 def round_step(x, step, up):
     q = Decimal(str(step))
     v = (Decimal(str(x)) / q).to_integral_value(rounding=ROUND_UP if up else ROUND_DOWN) * q
@@ -265,8 +270,8 @@ class Okx:
 
     def place_entry(self, inst, d, px, sz, stop, clid):
         body = {"instId": inst, "tdMode": "isolated", "side": "buy" if d == 1 else "sell", "ordType": "limit",
-                "px": str(px), "sz": str(sz), "clOrdId": clid,
-                "attachAlgoOrds": [{"slTriggerPx": str(stop), "slOrdPx": "-1", "slTriggerPxType": "last"}]}
+                "px": num(px), "sz": num(sz), "clOrdId": clid,
+                "attachAlgoOrds": [{"slTriggerPx": num(stop), "slOrdPx": "-1", "slTriggerPxType": "last"}]}
         ps = self.pos_side(d)
         if ps:
             body["posSide"] = ps
@@ -277,7 +282,7 @@ class Okx:
 
     def place_stop(self, inst, d, sz, stop):
         body = {"instId": inst, "tdMode": "isolated", "side": "sell" if d == 1 else "buy", "ordType": "conditional",
-                "sz": str(sz), "slTriggerPx": str(stop), "slOrdPx": "-1", "slTriggerPxType": "last"}
+                "sz": num(sz), "slTriggerPx": num(stop), "slOrdPx": "-1", "slTriggerPxType": "last"}
         ps = self.pos_side(d)
         if ps:
             body["posSide"] = ps
@@ -287,7 +292,7 @@ class Okx:
 
     def amend_stop(self, inst, algo_id, stop):
         return self.req("POST", "/api/v5/trade/amend-algos",
-                        body={"instId": inst, "algoId": algo_id, "newSlTriggerPx": str(stop)})
+                        body={"instId": inst, "algoId": algo_id, "newSlTriggerPx": num(stop)})
 
     def cancel_algos(self, items):
         return self.req("POST", "/api/v5/trade/cancel-algos", body=[{"instId": i, "algoId": a} for i, a in items])
@@ -298,7 +303,7 @@ class Okx:
         last = self.last_price(inst)
         px = round_step(last * (1 - d * REDUCE_SLIP), tick, up=(d == -1))
         body = {"instId": inst, "tdMode": "isolated", "side": "sell" if d == 1 else "buy", "ordType": "ioc",
-                "px": str(px), "sz": str(sz)}
+                "px": num(px), "sz": num(sz)}
         ps = self.pos_side(d)
         if ps:
             body["posSide"] = ps
