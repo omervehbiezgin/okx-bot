@@ -56,6 +56,7 @@ MAX_HOLD_DAYS = 60
 MIN_SP, MAX_SP = 0.5, 15.0  # stop mesafesi % sınırları
 ENTRY_SLIP = 0.001          # limit fiyatı: son fiyattan %0,1 aleyhe (hemen dolması için)
 REDUCE_SLIP = 0.005         # fazla pozisyon azaltırken kabul edilen en fazla kayma
+FILL_WAIT = 600             # sabah verilen giriş emirleri bu kadar saniye beklenir, dolmayan iptal
 ENTRY_TIMEOUT = 3600        # dolmayan giriş emri bu kadar saniye sonra iptal
 MAX_NOTIONAL_X = 2.0        # tek pozisyon büyüklüğü en fazla bakiyenin bu katı
 MAX_MARGIN_USE = 0.8        # toplam teminat en fazla bakiyenin bu oranı
@@ -592,6 +593,8 @@ def daily(ok, st, now):
         used_margin += margin
         acilan += 1
         held.add(inst)
+    if ok.has_keys and LIVE:
+        wait_fills(ok, st, now)
     if not found:
         note("Bugün sinyal yok.")
     if not ok.has_keys:
@@ -601,6 +604,33 @@ def daily(ok, st, now):
         note(f"📊 [KAĞIT] sanal bakiye {pp['bal']:.2f} USDT · açık: {acik or 'yok'} · kapanan işlem: {len(kap)}"
              + (f" (toplam {sum(x['pnl'] for x in kap):+.2f} USDT)" if kap else ""))
     st["last_daily"] = day_open
+
+
+def wait_fills(ok, st, now):
+    """Bu çalışmada verilen giriş emirlerinin dolmasını FILL_WAIT saniye bekler, dolmayanları iptal eder
+    (iptal GitHub'ın seyrek saatlik çalışmalarına bağlı kalmasın)."""
+    mine = {v["ordId"]: k for k, v in st.get("entries", {}).items() if v.get("t") == int(now) and v.get("ordId")}
+    if not mine:
+        return
+    left = dict(mine)
+    t_end = time.time() + FILL_WAIT
+    while left and time.time() < t_end:
+        time.sleep(30)
+        try:
+            pend = {o["ordId"] for o in ok.pending_orders()}
+        except OkxError as e:
+            log(f"emir listesi alınamadı: {e}")
+            continue
+        left = {o: i for o, i in left.items() if o in pend}
+    for oid, inst in left.items():
+        try:
+            ok.cancel_order(inst, oid)
+            st.get("entries", {}).pop(inst, None)
+            note(f"🗑 {short(inst)}: giriş emri {FILL_WAIT // 60} dakikada dolmadı, iptal edildi")
+        except OkxError as e:
+            note(f"❌ {short(inst)}: dolmayan emir iptal edilemedi ({e}); saatlik kontrolde yeniden denenecek")
+    if len(mine) > len(left):
+        note(f"✅ {len(mine) - len(left)}/{len(mine)} giriş emri doldu")
 
 
 # ---------------- Saatlik bakım ----------------
