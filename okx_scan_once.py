@@ -498,7 +498,7 @@ def analyze_fvg(inst, candle_open):
 # ---------------- Telegram / yardımcılar ----------------
 def send(msg):
     """Uzun mesajı 4000 karakterde böler. Hepsi gittiyse True döner."""
-    print(msg + "\n", flush=True)
+    print(plain(msg) + "\n", flush=True)
     token, chat = os.getenv("TG_TOKEN"), os.getenv("TG_CHAT_ID")
     if not (token and chat):
         print("UYARI: TG_TOKEN veya TG_CHAT_ID tanımlı değil, Telegram'a mesaj gönderilmedi!")
@@ -506,7 +506,7 @@ def send(msg):
 
     chunks, cur = [], ""
     for line in msg.split("\n"):
-        if len(cur) + len(line) + 1 > 4000:
+        if len(cur) + len(line) + 1 > 3500:
             chunks.append(cur)
             cur = ""
         cur += line + "\n"
@@ -518,8 +518,16 @@ def send(msg):
         try:
             r = requests.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
-                data={"chat_id": chat, "text": ch}, timeout=10,
+                data={"chat_id": chat, "text": to_html(ch), "parse_mode": "HTML",
+                      "disable_web_page_preview": "true"}, timeout=10,
             )
+            if r.status_code == 400:                    # HTML işlenemezse bağlantısız düz metin gönder
+                print("Telegram HTML hatası, düz metinle gönderiliyor:", r.text[:200])
+                r = requests.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    data={"chat_id": chat, "text": plain(ch)},
+                    timeout=10,
+                )
             if r.status_code != 200:
                 print("Telegram hata:", r.status_code, r.text[:200])
                 ok = False
@@ -533,6 +541,37 @@ def fmt_usdt(v):
     if v >= 1_000_000:
         return f"{v / 1_000_000:.1f}M"
     return f"{v / 1_000:.0f}K"
+
+
+# TradingView'de açılacak zaman dilimi (bildirimin zaman dilimi)
+TV_INTERVAL = {"15m": "15", "1H": "60", "4H": "240", "1Dutc": "D",
+               "EMA21_1W": "W", "EMA200_1D": "D", "FVG": "240"}
+LINK_ON, LINK_OFF = "\x01", "\x02"
+
+
+def link(inst, tf):
+    """Coin adını TradingView bağlantısı olacak şekilde işaretler (send() içinde HTML'e çevrilir)."""
+    return f"{LINK_ON}{inst}|{TV_INTERVAL.get(tf, '15')}{LINK_OFF}"
+
+
+def to_html(text):
+    """Metni Telegram HTML'ine çevirir; işaretli coin adlarını tıklanabilir TradingView bağlantısı yapar."""
+    import html, re
+    text = html.escape(text, quote=False)
+
+    def repl(m):
+        inst, iv = m.group(1), m.group(2)
+        sym = inst.replace("-USDT-SWAP", "")
+        url = f"https://www.tradingview.com/chart/?symbol=OKX%3A{sym}USDT.P&amp;interval={iv}"
+        return f'<a href="{url}">{sym}</a>'
+    return re.sub(re.escape(LINK_ON) + r"([^|]+)\|([^" + re.escape(LINK_OFF) + r"]+)" + re.escape(LINK_OFF), repl, text)
+
+
+def plain(text):
+    """Bağlantı işaretlerini kaldırıp sadece coin adını bırakır."""
+    import re
+    return re.sub(re.escape(LINK_ON) + r"([^|]+)\|[^" + re.escape(LINK_OFF) + r"]+" + re.escape(LINK_OFF),
+                  lambda m: short(m.group(1)), text)
 
 
 def short(inst):
@@ -564,7 +603,7 @@ def msg_breakout(bar, hits):
         tag = " 🔄dönüş" if r["reversal"] else ""
         hacim = f"hacim {r['ratio']:.1f}x ({fmt_usdt(r['vol'])})" if r["ratio"] else f"hacim {fmt_usdt(r['vol'])}"
         lines.append(
-            f"{kind} {short(r['inst'])}{stars}{tag}  {r['change']:+.1f}%  |  {hacim}  |  "
+            f"{kind} {link(r['inst'], bar)}{stars}{tag}  {r['change']:+.1f}%  |  {hacim}  |  "
             f"bant {r['base']} mum, %{r['range']:.1f}  |  {r['price']}"
         )
         if r["iyi"]:
@@ -585,7 +624,7 @@ def msg_ema(name, cfg, hits):
     lines = [f"📈 [{tf}] EMA{cfg['period']} gövde kesişimi: {len(hits)} coin"]
 
     def row(h):
-        return (f"  {short(h['inst'])}  kapanış {h['price']}  |  EMA {h['ema']:.6g}  "
+        return (f"  {link(h['inst'], name)}  kapanış {h['price']}  |  EMA {h['ema']:.6g}  "
                 f"({h['dist']:+.1f}%)")
 
     if up:
@@ -606,7 +645,7 @@ def msg_fvg(hits):
 
     def row(h, alt_ust, hareket):
         yakin = f" (yakın temas %{h['mesafe']:.2f})" if h["mesafe"] is not None else ""
-        return (f"  {short(h['inst'])} {'⭐' * h['score']}{yakin}  FVG {h['bot']:.6g}–{h['top']:.6g} "
+        return (f"  {link(h['inst'], 'FVG')} {'⭐' * h['score']}{yakin}  FVG {h['bot']:.6g}–{h['top']:.6g} "
                 f"({h['age']} gün önce)  |  4H kapanış {h['price']}  |  girişten sonraki {h['mum']}. mum  |  "
                 f"{alt_ust} fitil %{h['wick'] * 100:.0f}  |  hacim {h['vol_ratio']:.1f}x  |  {hareket} %{h['move']:.1f}")
 
@@ -642,7 +681,8 @@ def main():
     due = [t for t in tasks if state.get(t[0]) != t[4]]
 
     if manual:
-        send("✅ Test: OKX tarayıcı botu GitHub Actions üzerinde çalışıyor.")
+        send("✅ Test: OKX tarayıcı botu GitHub Actions üzerinde çalışıyor.\n"
+             f"Bağlantı denemesi: {link('BTC-USDT-SWAP', '15m')} (15 dk) · {link('ETH-USDT-SWAP', '4H')} (4 saat)")
     if not due:
         print("Taranacak yeni mum yok.")
         return
