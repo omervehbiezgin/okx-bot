@@ -563,7 +563,8 @@ def to_html(text):
         inst, iv = m.group(1), m.group(2)
         sym = inst.replace("-USDT-SWAP", "")
         url = f"https://www.tradingview.com/chart/?symbol=OKX%3A{sym}USDT.P&amp;interval={iv}"
-        return f'<a href="{url}">{sym}</a>'
+        # Ad: tarayıcıda doğru zaman diliminde açar · kod: dokununca kopyalanır (TradingView uygulamasında aratmak için)
+        return f'<a href="{url}">{sym}</a> <code>OKX:{sym}USDT.P</code>'
     return re.sub(re.escape(LINK_ON) + r"([^|]+)\|([^" + re.escape(LINK_OFF) + r"]+)" + re.escape(LINK_OFF), repl, text)
 
 
