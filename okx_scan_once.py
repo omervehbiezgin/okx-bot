@@ -77,7 +77,18 @@ EMA_TASKS = {
     "EMA200_1D":  dict(bar="1Dutc", period=200, bars=420, sec=86400,  off=0),
 }
 
-MAX_ALERTS_PER_SCAN = 10         # bir kırılım mesajında en fazla kaç coin listelensin
+# RSI(14) dönüşleri (günlük ve haftalık kapanışta)
+#   Kapanış dönüşü: önceki mum RSI 30 altında / 70 üstünde kapanmış, son mum tekrar 30 üstünde / 70 altında kapanmış
+#   Fitil dönüşü  : son mumun fitili (en düşük / en yüksek fiyat) RSI'ı 30 ve altına / 70 ve üstüne taşımış,
+#                   ama mum 30 üstünde / 70 altında kapanmış (önceki mum bölgenin dışındaysa)
+RSI_PERIOD = 14
+RSI_LOW, RSI_HIGH = 30, 70
+RSI_TASKS = {
+    "RSI_1D": dict(bar="1Dutc", sec=86400,  off=0),
+    "RSI_1W": dict(bar="1Wutc", sec=604800, off=345600),
+}
+
+MAX_ALERTS_PER_SCAN = 50         # bir kırılım mesajında en fazla kaç coin listelensin
 REQUEST_PAUSE = 0.1
 # Bir görev state'te İLK KEZ görülüyorsa ve mum bu süreden (saniye) önce kapanmışsa taranmaz.
 LATE_LIMIT = {900: 3600, 3600: 10800, 14400: 21600, 86400: 21600, 604800: 43200}
@@ -396,6 +407,59 @@ def analyze_ema(inst, cfg, candle_open):
     return {"inst": inst, "kind": kind, "price": c, "ema": e, "dist": (c / e - 1) * 100}
 
 
+# ---------------- RSI DÖNÜŞÜ ----------------
+def rsi_state(closes, n=RSI_PERIOD):
+    """TradingView ta.rsi ile aynı (Wilder, ilk değer SMA). Her mum için (rsi, ort_kazanç, ort_kayıp) döner."""
+    out = [None] * len(closes)
+    if len(closes) <= n:
+        return out
+    ch = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    g = sum(max(c, 0) for c in ch[:n]) / n
+    l = sum(max(-c, 0) for c in ch[:n]) / n
+    def val(g, l):
+        return 100.0 if l == 0 else 100 - 100 / (1 + g / l)
+    out[n] = (val(g, l), g, l)
+    for i in range(n + 1, len(closes)):
+        c = ch[i - 1]
+        g = (g * (n - 1) + max(c, 0)) / n
+        l = (l * (n - 1) + max(-c, 0)) / n
+        out[i] = (val(g, l), g, l)
+    return out
+
+
+def analyze_rsi(inst, cfg, candle_open):
+    rows = candles(inst, cfg["bar"], 300)
+    if len(rows) < 50:
+        return None
+    expect_candle(rows[-1][0], candle_open)
+    h = [float(r[2]) for r in rows]
+    l = [float(r[3]) for r in rows]
+    c = [float(r[4]) for r in rows]
+    st = rsi_state(c)
+    if st[-2] is None:
+        return None
+    n = RSI_PERIOD
+    onceki, (simdi, _, _) = st[-2][0], st[-1]
+    _, g0, l0 = st[-2]
+
+    def rsi_if(price):                                   # son mum bu fiyatta kapansaydı RSI ne olurdu
+        d = price - c[-2]
+        g = (g0 * (n - 1) + max(d, 0)) / n
+        ls = (l0 * (n - 1) + max(-d, 0)) / n
+        return 100.0 if ls == 0 else 100 - 100 / (1 + g / ls)
+
+    if onceki < RSI_LOW <= simdi:
+        return dict(inst=inst, kind="UP", tip="kapanış", onceki=onceki, simdi=simdi, uc=None, price=c[-1])
+    if onceki > RSI_HIGH >= simdi:
+        return dict(inst=inst, kind="DOWN", tip="kapanış", onceki=onceki, simdi=simdi, uc=None, price=c[-1])
+    uc_dusuk, uc_yuksek = rsi_if(l[-1]), rsi_if(h[-1])
+    if onceki >= RSI_LOW and uc_dusuk <= RSI_LOW < simdi:
+        return dict(inst=inst, kind="UP", tip="fitil", onceki=onceki, simdi=simdi, uc=uc_dusuk, price=c[-1])
+    if onceki <= RSI_HIGH and uc_yuksek >= RSI_HIGH > simdi:
+        return dict(inst=inst, kind="DOWN", tip="fitil", onceki=onceki, simdi=simdi, uc=uc_yuksek, price=c[-1])
+    return None
+
+
 # ---------------- 3) FVG'DEN DÖNÜŞ (bölge günlük, tepki 4H) ----------------
 def analyze_fvg(inst, candle_open):
     d = daily(inst)
@@ -544,7 +608,7 @@ def fmt_usdt(v):
 
 
 # TradingView'de açılacak zaman dilimi (bildirimin zaman dilimi)
-TV_INTERVAL = {"15m": "15", "1H": "60", "4H": "240", "1Dutc": "D",
+TV_INTERVAL = {"15m": "15", "1H": "60", "4H": "240", "1Dutc": "D", "RSI_1D": "D", "RSI_1W": "W",
                "EMA21_1W": "W", "EMA200_1D": "D", "FVG": "240"}
 LINK_ON, LINK_OFF = "\x01", "\x02"
 
@@ -639,6 +703,27 @@ def msg_ema(name, cfg, hits):
     return "\n".join(lines)
 
 
+def msg_rsi(name, cfg, hits):
+    tf = cfg["bar"].replace("utc", "")
+    lines = [f"📊 [{tf}] RSI({RSI_PERIOD}) dönüşü: {len(hits)} coin"]
+
+    def row(h):
+        if h["tip"] == "kapanış":
+            return f"  {link(h['inst'], name)}  kapanışla  |  RSI {h['onceki']:.1f} → {h['simdi']:.1f}  |  {h['price']}"
+        return (f"  {link(h['inst'], name)}  fitille  |  fitilde RSI {h['uc']:.1f}, kapanış {h['simdi']:.1f}  "
+                f"|  {h['price']}")
+
+    up = [h for h in hits if h["kind"] == "UP"]
+    down = [h for h in hits if h["kind"] == "DOWN"]
+    if up:
+        lines.append(f"🟢 {RSI_LOW} altına inip tekrar üstünde kapatanlar:")
+        lines += [row(h) for h in sorted(up, key=lambda x: x["tip"])]
+    if down:
+        lines.append(f"🔴 {RSI_HIGH} üstüne çıkıp tekrar altında kapatanlar:")
+        lines += [row(h) for h in sorted(down, key=lambda x: x["tip"])]
+    return "\n".join(lines)
+
+
 def msg_fvg(hits):
     sup = [h for h in hits if h["kind"] == "SUPPORT"]
     res = [h for h in hits if h["kind"] == "RESIST"]
@@ -678,6 +763,8 @@ def main():
     for name, cfg in EMA_TASKS.items():
         tasks.append((name, "ema", name, cfg, last_closed_open(now, cfg["sec"], cfg["off"])))
     tasks.append(("FVG_1Dutc>4H", "fvg", "1Dutc>4H", {"sec": FVG_SEC}, last_closed_open(now, FVG_SEC)))
+    for name, cfg in RSI_TASKS.items():
+        tasks.append((name, "rsi", name, cfg, last_closed_open(now, cfg["sec"], cfg["off"])))
 
     due = [t for t in tasks if state.get(t[0]) != t[4]]
 
@@ -712,6 +799,8 @@ def main():
                     r = analyze_breakout(inst, name, cfg, candle_open)
                 elif kind == "fvg":
                     r = analyze_fvg(inst, candle_open)
+                elif kind == "rsi":
+                    r = analyze_rsi(inst, cfg, candle_open)
                 else:
                     r = analyze_ema(inst, cfg, candle_open)
             except StaleCandle:
@@ -736,6 +825,8 @@ def main():
                 text = msg_breakout(name, hits)
             elif kind == "fvg":
                 text = msg_fvg(hits)
+            elif kind == "rsi":
+                text = msg_rsi(name, cfg, hits)
             else:
                 text = msg_ema(name, cfg, hits)
             head, _, rest = text.partition("\n")
