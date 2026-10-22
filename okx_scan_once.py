@@ -660,7 +660,7 @@ def save_state(state):
 def msg_breakout(bar, hits):
     label = bar.replace("utc", "")
     hits.sort(key=lambda x: (x["stars"], x["reversal"], x["ratio"] or 0), reverse=True)
-    lines = [f"📦➡️🚀 [{label}] Yatay kırılım: {len(hits)} coin"]
+    lines = [f"📦 [{label}] Yatay kırılım: {len(hits)} coin"]
     for r in hits[:MAX_ALERTS_PER_SCAN]:
         up = r["kind"] == 1
         kind = "🟢 YUKARI" if up else "🔴 AŞAĞI"
@@ -727,7 +727,7 @@ def msg_rsi(name, cfg, hits):
 def msg_fvg(hits):
     sup = [h for h in hits if h["kind"] == "SUPPORT"]
     res = [h for h in hits if h["kind"] == "RESIST"]
-    lines = [f"🧲 FVG'den dönüş (günlük bölge, 4H tepki): {len(hits)} coin"]
+    lines = [f"🟩🟥 FVG'den dönüş (günlük bölge, 4H tepki): {len(hits)} coin"]
 
     def row(h, alt_ust, hareket):
         yakin = f" (yakın temas %{h['mesafe']:.2f})" if h["mesafe"] is not None else ""
@@ -736,11 +736,11 @@ def msg_fvg(hits):
                 f"{alt_ust} fitil %{h['wick'] * 100:.0f}  |  hacim {h['vol_ratio']:.1f}x  |  {hareket} %{h['move']:.1f}")
 
     if sup:
-        lines.append("🔵 YUKARI dönüş (günlük destek FVG'si):")
+        lines.append("🟩 YUKARI dönüş (günlük destek FVG'si):")
         for h in sorted(sup, key=lambda x: (x["score"], -x["age"]), reverse=True):
             lines.append(row(h, "alt", "zirveden geri çekilme"))
     if res:
-        lines.append("🟠 AŞAĞI dönüş (günlük direnç FVG'si):")
+        lines.append("🟥 AŞAĞI dönüş (günlük direnç FVG'si):")
         for h in sorted(res, key=lambda x: (x["score"], -x["age"]), reverse=True):
             lines.append(row(h, "üst", "dipten yükseliş"))
     return "\n".join(lines)
