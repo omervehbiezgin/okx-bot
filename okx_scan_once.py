@@ -269,14 +269,15 @@ def daily_zones(d, upto):
 
 
 def open_fvgs(d, upto):
-    """Kırılım notları için: 'upto' anında henüz tamamen dolmamış günlük FVG'ler."""
+    """Kırılım notları için: 'upto' anında günlük kapanışla henüz geçilmemiş günlük FVG'ler."""
     by_f = {z["f"]: z for z in daily_zones(d, upto)}
     acik = []
     last = day_at(d, upto)
     for f in range(2, last + 1):
-        # f günü kapanınca önce bu günle tamamen dolanlar çıkar, sonra yeni FVG eklenir
-        acik = [z for z in acik if not ((z["tur"] == 1 and d["l"][f] <= z["alt"]) or
-                                         (z["tur"] == -1 and d["h"][f] >= z["ust"]))]
+        # f günü kapanınca önce bu günün KAPANIŞIYLA bölgenin öbür tarafına geçilenler çıkar
+        # (sadece fitille geçmek doldurmaz), sonra yeni FVG eklenir
+        acik = [z for z in acik if not ((z["tur"] == 1 and d["c"][f] < z["alt"]) or
+                                         (z["tur"] == -1 and d["c"][f] > z["ust"]))]
         if f in by_f:
             acik.append(by_f[f])
             if len(acik) > NOTE_MAX_ZONES:
