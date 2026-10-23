@@ -57,6 +57,8 @@ BRK_STAR_VOL = 1.5       # ⭐ hacim normalin en az kaç katı
 BRK_STAR_SIZE = 2.0      # ⭐ mum boyu bant ortalamasının en az kaç katı
 NOTE_NEAR_PCT = 2.0      # ⚠️ notu: kırılım ters FVG'ye en fazla % kaç uzakta
 NOTE_MAX_ZONES = 60      # kırılım notları için tutulan en fazla açık günlük FVG
+NEW_LISTING_DAYS = 7     # OKX'te bu kadar günden yeni listelenen coinlerin mesajına "🆕 yeni" notu düşülür
+                         # (TradingView bu coinlerin OKX grafiğini henüz göstermeyebilir)
 
 # Günlük FVG ve 4H tepki (FVG'den dönüş)
 ATR_DAYS = 14            # günlük ortalama mum boyu kaç günden hesaplanır
@@ -128,6 +130,9 @@ def api(path, params):
     return j["data"]
 
 
+LIST_TIME = {}   # instId -> OKX'te listelendiği an (sn); crypto_only() doldurur
+
+
 def crypto_only():
     """Sadece KRİPTO perpetual'ları döndürür (hisse, emtia, döviz vb. TradFi kontratları hariç).
     OKX 'instCategory': 1 = kripto, 3 = hisse, 4 = emtia, 5 = döviz, 6 = tahvil.
@@ -137,6 +142,11 @@ def crypto_only():
     except Exception as e:
         print("UYARI: kontrat kategorileri alınamadı, TradFi filtresi uygulanmadı:", e)
         return None
+    for d in data:   # listelenme zamanı (ms): yeni coin notu için
+        try:
+            LIST_TIME[d["instId"]] = int(d.get("listTime") or 0) // 1000
+        except ValueError:
+            pass
     kategori = {d["instId"]: str(d.get("instCategory", "")) for d in data}
     if not any(kategori.values()):
         print("UYARI: OKX kategori bilgisi vermedi, TradFi filtresi uygulanmadı.")
@@ -616,7 +626,18 @@ LINK_ON, LINK_OFF = "\x01", "\x02"
 
 def link(inst, tf):
     """Coin adını TradingView bağlantısı olacak şekilde işaretler (send() içinde HTML'e çevrilir)."""
-    return f"{LINK_ON}{inst}|{TV_INTERVAL.get(tf, '15')}{LINK_OFF}"
+    return f"{LINK_ON}{inst}|{TV_INTERVAL.get(tf, '15')}{LINK_OFF}" + yeni_notu(inst)
+
+
+def yeni_notu(inst):
+    """Son NEW_LISTING_DAYS gün içinde listelenen coinler için ' 🆕 yeni (N gün)' notu."""
+    t = LIST_TIME.get(inst, 0)
+    if t <= 0:
+        return ""
+    gun = (time.time() - t) / 86400
+    if gun > NEW_LISTING_DAYS:
+        return ""
+    return f" 🆕 yeni ({max(int(gun), 0)} gün)" if gun >= 1 else " 🆕 yeni (bugün)"
 
 
 def to_html(text):
