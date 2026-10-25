@@ -58,7 +58,14 @@ jobs:
               break
             fi
             echo "Sonraki tarama $BEKLE saniye sonra."
-            sleep $BEKLE
+            # Taramalar arasında her dakika fiyat alarmlarını kontrol et
+            SONRAKI=$(( SIMDI + BEKLE ))
+            while [ $(( SONRAKI - $(date +%s) )) -gt 75 ]; do
+              sleep 60
+              python okx_scan_once.py --alarm || echo "Alarm kontrolü hatayla bitti."
+            done
+            KALAN=$(( SONRAKI - $(date +%s) ))
+            if [ $KALAN -gt 0 ]; then sleep $KALAN; fi
           done
 
       - name: Durumu kaydet

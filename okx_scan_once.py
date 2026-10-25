@@ -17,6 +17,9 @@ OKX'teki TÜM USDT perpetual (futures) coinleri tarar. Dört tarama türü:
   3) EMA200 1D: Günlük mum gövdesi EMA200'ü kesip kapattı
   4) FVG'DEN DÖNÜŞ: Günlük FVG'ye 4H mumlarla ilk temas (yakın temas payı dahil), 3 mumluk pencere
      içinde bölgenin dışında kapanış, geri çekilme ve puan şartları.
+  FİYAT ALARMLARI: kırılımdan sonra fiyat bandın ortasına, FVG'den dönüşten sonra bölgenin sınırına
+     (yakın temas dahil) geri gelince bir kez bildirim. Taramalar arasında her dakika kontrol edilir
+     (python okx_scan_once.py --alarm).
 
 Ortam değişkenleri: TG_TOKEN, TG_CHAT_ID
 """
@@ -57,6 +60,10 @@ BRK_STAR_VOL = 1.5       # ⭐ hacim normalin en az kaç katı
 BRK_STAR_SIZE = 2.0      # ⭐ mum boyu bant ortalamasının en az kaç katı
 NOTE_NEAR_PCT = 2.0      # ⚠️ notu: kırılım ters FVG'ye en fazla % kaç uzakta
 NOTE_MAX_ZONES = 60      # kırılım notları için tutulan en fazla açık günlük FVG
+# Fiyat alarmları: sinyalden sonra fiyat seviyeye geri gelince Telegram'a bir kez bildirim
+#   Kırılım: bandın ortası ((üst + alt) / 2) | FVG'den dönüş: destekte üst çizgi, dirençte alt çizgi (yakın temas payı dahil)
+ALARM_SURE = {"15m": 129600, "1H": 259200, "4H": 864000, "1Dutc": 1814400, "FVG": 864000}  # 1,5 gün, 3 gün, 10 gün, 3 hafta, 10 gün
+ALARM_MAX = 3000         # en fazla bu kadar alarm tutulur (en eskiler silinir)
 NEW_LISTING_DAYS = 7     # OKX'te bu kadar günden yeni listelenen coinlerin mesajına "🆕 yeni" notu düşülür
                          # (TradingView bu coinlerin OKX grafiğini henüz göstermeyebilir)
 
@@ -397,7 +404,7 @@ def analyze_breakout(inst, bar, cfg, candle_open):
 
     return {"inst": inst, "kind": kind, "change": (c[L] / o[L] - 1) * 100, "ratio": ratio,
             "vol": qv[L], "price": c[L], "range": rng, "base": base, "stars": stars,
-            "reversal": rev, "iyi": iyi, "uyari": uyari}
+            "reversal": rev, "iyi": iyi, "uyari": uyari, "hi": hi, "lo": lo, "close_time": close_time}
 
 
 # ---------------- 2) EMA KESİŞİMİ ----------------
@@ -555,7 +562,8 @@ def analyze_fvg(inst, candle_open):
                     if best is None or (score, z["formed"]) > (best["score"], best["_formed"]):
                         best = dict(kind="SUPPORT" if tur == 1 else "RESIST", bot=alt, top=ust,
                                     age=int(yas), wick=fit, vol_ratio=z["pv"], move=har, score=score,
-                                    mum=z["tem"], mesafe=mes, _formed=z["formed"])
+                                    mum=z["tem"], mesafe=mes, _formed=z["formed"],
+                                    pay=FVG_NEAR_TOUCH * datr, close_time=ct)
                 elif z["tem"] >= FVG_WINDOW:
                     z["dead"] = True
             else:
@@ -768,6 +776,118 @@ def msg_fvg(hits):
     return "\n".join(lines)
 
 
+# ---------------- Fiyat alarmları ----------------
+# Her kırılım ve FVG'den dönüş sinyalinde bir alarm kaydedilir (state.json içinde "ALARMS").
+# Sinyalden SONRA fiyat seviyeye gelirse Telegram'a bir kez bildirilir, alarm silinir.
+# Kontrol: taramalar arasında her dakika anlık fiyat (tek istek) + her 15 dakikada son mumların fitilleri.
+# Süresi dolan alarm sessizce silinir. (Seviyeye gelmeden bandın / bölgenin öbür tarafına geçilemeyeceği için
+# bozulma durumunda da alarm önce tetiklenir ya da sessizce düşer.)
+def alarm_ekle(state, alarms):
+    liste = state.get("ALARMS", [])
+    var = {a["id"] for a in liste}
+    for a in alarms:
+        if a["id"] not in var:
+            liste.append(a)
+    if len(liste) > ALARM_MAX:
+        liste = liste[-ALARM_MAX:]
+    state["ALARMS"] = liste
+
+
+def kirilim_alarmlari(bar, hits):
+    out = []
+    for r in hits:
+        t = r["close_time"]
+        out.append(dict(id=f"brk|{r['inst']}|{bar}|{t}", tur="brk", inst=r["inst"], tf=bar, yon=r["kind"],
+                        seviye=(r["hi"] + r["lo"]) / 2, pay=0.0, t=t, bitis=t + ALARM_SURE[bar]))
+    return out
+
+
+def fvg_alarmlari(hits):
+    out = []
+    for h in hits:
+        t = h["close_time"]
+        up = h["kind"] == "SUPPORT"
+        out.append(dict(id=f"fvg|{h['inst']}|{t}", tur="fvg", inst=h["inst"], tf="FVG", yon=1 if up else -1,
+                        seviye=h["top"] if up else h["bot"], pay=h["pay"], t=t, bitis=t + ALARM_SURE["FVG"]))
+    return out
+
+
+def alarm_tetik(a, dusuk, yuksek):
+    """Fiyat aralığı [dusuk, yuksek] alarmı tetikliyor mu? (gerçek temas mı, yakın temas mı)"""
+    if a["yon"] == 1:                      # fiyat yukarıda, seviyeye inmesi bekleniyor
+        if dusuk <= a["seviye"]:
+            return "temas"
+        if a["pay"] > 0 and dusuk <= a["seviye"] + a["pay"]:
+            return "yakın"
+    else:                                  # fiyat aşağıda, seviyeye çıkması bekleniyor
+        if yuksek >= a["seviye"]:
+            return "temas"
+        if a["pay"] > 0 and yuksek >= a["seviye"] - a["pay"]:
+            return "yakın"
+    return None
+
+
+def alarm_mesaji(tetik):
+    lines = [f"🎯 Fiyat alarmı: {len(tetik)} coin"]
+    now = time.time()
+    for a, nasil, fiyat in tetik:
+        dk = max(int((now - a["t"]) / 60), 0)
+        once = f"{dk} dk önce" if dk < 60 else f"{dk // 60} saat önce" if dk < 2880 else f"{dk // 1440} gün önce"
+        if a["tur"] == "brk":
+            lines.append(f"{'🟢' if a['yon'] == 1 else '🔴'} [{a['tf'].replace('utc', '')}] {link(a['inst'], a['tf'])}  "
+                         f"bant ortasına geldi: {a['seviye']:.6g}  |  kırılım {once}  |  fiyat {fiyat:.6g}")
+        else:
+            ad = "🟩" if a["yon"] == 1 else "🟥"
+            cizgi = "üst" if a["yon"] == 1 else "alt"
+            yk = " (yakın temas)" if nasil == "yakın" else ""
+            lines.append(f"{ad} {link(a['inst'], 'FVG')}  FVG {cizgi} çizgisine geldi{yk}: {a['seviye']:.6g}  |  "
+                         f"dönüş {once}  |  fiyat {fiyat:.6g}")
+    return "\n".join(lines)
+
+
+def alarm_kontrol(state, fitil=False):
+    """Alarmları kontrol eder. fitil=True: son 15 dk mumlarının en düşük / en yüksek fiyatına da bakar."""
+    liste = state.get("ALARMS", [])
+    if not liste:
+        return
+    now = time.time()
+    liste = [a for a in liste if a["bitis"] > now]
+    son = {}
+    try:
+        for t in api("/api/v5/market/tickers", {"instType": "SWAP"}):
+            try:
+                son[t["instId"]] = float(t["last"])
+            except (ValueError, KeyError):
+                pass
+    except Exception as e:
+        print("Alarm: anlık fiyatlar alınamadı:", e)
+    fitiller = {}
+    if fitil:
+        for inst in sorted({a["inst"] for a in liste}):
+            try:
+                fitiller[inst] = [(int(r[0]) // 1000, float(r[2]), float(r[3])) for r in candles(inst, "15m", 3)]
+            except Exception as e:
+                print(f"Alarm: {inst} mumları alınamadı: {e}")
+            time.sleep(REQUEST_PAUSE)
+    tetik, kalan = [], []
+    for a in liste:
+        fiyat = son.get(a["inst"])
+        dusuk = yuksek = fiyat
+        for t_acilis, h, l in fitiller.get(a["inst"], []):
+            if t_acilis >= a["t"]:             # sadece sinyalden sonraki mumlar
+                dusuk = l if dusuk is None else min(dusuk, l)
+                yuksek = h if yuksek is None else max(yuksek, h)
+        nasil = alarm_tetik(a, dusuk, yuksek) if dusuk is not None else None
+        if nasil:
+            tetik.append((a, nasil, fiyat if fiyat is not None else a["seviye"]))
+        else:
+            kalan.append(a)
+    if tetik and not send(alarm_mesaji(tetik)):
+        return                                  # gönderilemediyse alarmlar kalsın, sonra tekrar denensin
+    state["ALARMS"] = kalan
+    save_state(state)
+
+
 # ---------------- Ana akış ----------------
 def last_closed_open(now, sec, off=0):
     return ((now - off) // sec) * sec + off - sec
@@ -789,6 +909,11 @@ def main():
         tasks.append((name, "rsi", name, cfg, last_closed_open(now, cfg["sec"], cfg["off"])))
 
     due = [t for t in tasks if state.get(t[0]) != t[4]]
+
+    try:
+        alarm_kontrol(state, fitil=True)        # her 15 dakikada: anlık fiyat + son mumların fitilleri
+    except Exception as e:
+        print("Alarm kontrolü hatası:", e)
 
     if manual:
         send("✅ Test: OKX tarayıcı botu GitHub Actions üzerinde çalışıyor.")
@@ -854,6 +979,11 @@ def main():
             head, _, rest = text.partition("\n")
             text = head + "\n" + candle_stamp(candle_open, cfg["sec"], late) + ("\n" + rest if rest else "")
             sent_ok = send(text)
+            if sent_ok:                          # mesajda görünen sinyaller için fiyat alarmı kur
+                if kind == "brk":
+                    alarm_ekle(state, kirilim_alarmlari(name, hits[:MAX_ALERTS_PER_SCAN]))
+                elif kind == "fvg":
+                    alarm_ekle(state, fvg_alarmlari(hits))
 
         if sent_ok:
             state[key] = candle_open
@@ -861,6 +991,12 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--alarm" in sys.argv:                    # taramalar arasındaki dakikalık alarm kontrolü
+        try:
+            alarm_kontrol(load_state())
+        except Exception as e:
+            print("Alarm kontrolü hatası:", e)
+        sys.exit(0)
     try:
         main()
     except Exception as e:
