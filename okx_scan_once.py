@@ -61,7 +61,7 @@ BRK_STAR_SIZE = 2.0      # ⭐ mum boyu bant ortalamasının en az kaç katı
 NOTE_NEAR_PCT = 2.0      # ⚠️ notu: kırılım ters FVG'ye en fazla % kaç uzakta
 NOTE_MAX_ZONES = 60      # kırılım notları için tutulan en fazla açık günlük FVG
 # Fiyat alarmları: sinyalden sonra fiyat seviyeye geri gelince Telegram'a bir kez bildirim
-#   Kırılım: bandın ortası ((üst + alt) / 2) | FVG'den dönüş: destekte üst çizgi, dirençte alt çizgi (yakın temas payı dahil)
+#   Kırılım: önce kırılan bant çizgisi (long'da üst, short'ta alt), sonra bandın ortası ((üst + alt) / 2) | FVG'den dönüş: destekte üst çizgi, dirençte alt çizgi (yakın temas payı dahil)
 ALARM_SURE = {"15m": 129600, "1H": 259200, "4H": 864000, "1Dutc": 1814400, "FVG": 864000}  # 1,5 gün, 3 gün, 10 gün, 3 hafta, 10 gün
 ALARM_MAX = 3000         # en fazla bu kadar alarm tutulur (en eskiler silinir)
 NEW_LISTING_DAYS = 7     # OKX'te bu kadar günden yeni listelenen coinlerin mesajına "🆕 yeni" notu düşülür
@@ -797,8 +797,12 @@ def kirilim_alarmlari(bar, hits):
     out = []
     for r in hits:
         t = r["close_time"]
-        out.append(dict(id=f"brk|{r['inst']}|{bar}|{t}", tur="brk", inst=r["inst"], tf=bar, yon=r["kind"],
-                        seviye=(r["hi"] + r["lo"]) / 2, pay=0.0, t=t, bitis=t + ALARM_SURE[bar]))
+        ortak = dict(tur="brk", inst=r["inst"], tf=bar, yon=r["kind"], pay=0.0, t=t, bitis=t + ALARM_SURE[bar])
+        # 1) kırılan bant çizgisi: long'da üst, short'ta alt çizgi (fiyat geri çekilirken önce buraya gelir)
+        out.append(dict(ortak, id=f"brk|{r['inst']}|{bar}|{t}|cizgi", nokta="cizgi",
+                        seviye=r["hi"] if r["kind"] == 1 else r["lo"]))
+        # 2) bandın ortası
+        out.append(dict(ortak, id=f"brk|{r['inst']}|{bar}|{t}", nokta="orta", seviye=(r["hi"] + r["lo"]) / 2))
     return out
 
 
@@ -828,14 +832,16 @@ def alarm_tetik(a, dusuk, yuksek):
 
 
 def alarm_mesaji(tetik):
-    lines = [f"🎯 Fiyat alarmı: {len(tetik)} coin"]
+    lines = [f"🎯 Fiyat alarmı: {len(tetik)} adet"]
     now = time.time()
     for a, nasil, fiyat in tetik:
         dk = max(int((now - a["t"]) / 60), 0)
         once = f"{dk} dk önce" if dk < 60 else f"{dk // 60} saat önce" if dk < 2880 else f"{dk // 1440} gün önce"
         if a["tur"] == "brk":
+            yer = ("bant üst çizgisine" if a["yon"] == 1 else "bant alt çizgisine") \
+                if a.get("nokta") == "cizgi" else "bant ortasına"
             lines.append(f"{'🟢' if a['yon'] == 1 else '🔴'} [{a['tf'].replace('utc', '')}] {link(a['inst'], a['tf'])}  "
-                         f"bant ortasına geldi: {a['seviye']:.6g}  |  kırılım {once}  |  fiyat {fiyat:.6g}")
+                         f"{yer} geldi: {a['seviye']:.6g}  |  kırılım {once}  |  fiyat {fiyat:.6g}")
         else:
             ad = "🟩" if a["yon"] == 1 else "🟥"
             cizgi = "üst" if a["yon"] == 1 else "alt"
