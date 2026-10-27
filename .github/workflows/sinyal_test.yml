@@ -49,7 +49,7 @@ jobs:
         if: always()
         run: |
           [ -f sinyal_sonuc.md ] || exit 0
-          mkdir -p /tmp/sonuc && cp sinyal_sonuc.md sinyal_sonuc.json /tmp/sonuc/ 2>/dev/null
+          mkdir -p /tmp/sonuc && cp sinyal_sonuc.* /tmp/sonuc/
           cd /tmp/sonuc
           git init -q -b sinyal-test-sonuclari
           git config user.name "github-actions"
