@@ -804,6 +804,8 @@ def main():
                             return simulate(s4, a4, i0, yon, [], st, ("be", k), piyasa=px, max_bar=60 * 6)
                         gun = int(giris.split()[1][:-1])
                         seviye = sg["ust"] if yon == 1 else sg["alt"]
+                        if (seviye - st) * yon <= 0:         # yakın temasta fitil bölgenin dışında: stop girişin ötesinde, geçersiz
+                            return None
                         sg["emir_bitis"] = sg["t"] + gun * DAY
                         alt, ust = sg["alt"], sg["ust"]
                         return simulate(s4, a4, i0, yon, [(seviye, 1.0, st)], st, ("be", k), bekle=gun * 6,
