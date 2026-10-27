@@ -1,0 +1,59 @@
+name: Sinyal Gecmis Testi
+
+# Tarama botu sinyallerinin geçmişe dönük testi (sinyal_bt.py). Telegram'a MESAJ GÖNDERMEZ (secret verilmez),
+# canlı botun durum dosyasına dokunmaz. Sonuçlar "sinyal-test-sonuclari" dalına yazılır.
+
+on:
+  workflow_dispatch:
+    inputs:
+      top:
+        description: "Kırılım için hacme göre ilk kaç coin"
+        default: "100"
+      max_coin:
+        description: "En fazla kaç coin (0 = hepsi; deneme için küçük sayı)"
+        default: "0"
+
+permissions:
+  contents: write              # sadece sonuç dalına yazmak için
+
+concurrency:
+  group: okx-sinyal-test
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Onceki test verisini geri yukle
+        uses: actions/cache/restore@v4
+        with:
+          path: sinyal_cache.json.gz
+          key: sinyal-bt-${{ github.run_id }}
+          restore-keys: sinyal-bt-
+      - run: pip install requests numpy pandas
+      - run: python sinyal_bt.py
+        env:
+          BT_TOP: ${{ inputs.top || '100' }}
+          BT_MAX_COIN: ${{ inputs.max_coin || '0' }}
+      - name: Test verisini kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: sinyal_cache.json.gz
+          key: sinyal-bt-${{ github.run_id }}
+      - name: Sonuclari sinyal-test-sonuclari dalina yaz
+        if: always()
+        run: |
+          [ -f sinyal_sonuc.md ] || exit 0
+          mkdir -p /tmp/sonuc && cp sinyal_sonuc.md sinyal_sonuc.json /tmp/sonuc/ 2>/dev/null
+          cd /tmp/sonuc
+          git init -q -b sinyal-test-sonuclari
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add .
+          git commit -q -m "Sinyal test sonuçları (çalışma ${{ github.run_id }})"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" HEAD:sinyal-test-sonuclari
