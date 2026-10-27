@@ -1011,4 +1011,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:                                   # hata da sonuç dalına yazılsın (kayıtlar buradan okunamıyor)
+        import traceback
+        lines.append("\n## HATA\n\n```\n" + traceback.format_exc() + "```")
+        with open(OUT_MD, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        raise
