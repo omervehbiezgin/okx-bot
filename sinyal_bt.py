@@ -501,6 +501,8 @@ def simulate(s, a, i0, yon, emirler, stop0, iz, tp=None, bekle=None, iptal=None,
     """
     o, h, l, c = s["o"], s["h"], s["l"], s["c"]
     n = len(c)
+    if i0 >= n:                                        # sinyal son mumda: sonrası yok
+        return None
     bekleyen = list(emirler)
     dolan = []                                         # (fiyat, ağırlık, ücret)
     stop = None
