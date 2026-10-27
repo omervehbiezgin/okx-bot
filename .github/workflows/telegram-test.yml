@@ -1,0 +1,39 @@
+name: Telegram Bot Testi
+
+# Sadece elle çalıştırılır: dört bota birer test mesajı gönderir.
+# Tarama yapmaz, çalışan tarama turunu etkilemez.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Test mesajlari
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TG_TOKEN_KIRILIM: ${{ secrets.TG_TOKEN_KIRILIM }}
+          TG_TOKEN_EMA: ${{ secrets.TG_TOKEN_EMA }}
+          TG_TOKEN_RSI: ${{ secrets.TG_TOKEN_RSI }}
+        run: |
+          python - <<'PY'
+          import okx_scan_once as b
+          for kanal, ad in (("ana", "FVG"), ("kirilim", "Kırılım"), ("ema", "EMA"), ("rsi", "RSI")):
+              tanimli = kanal == "ana" or bool(b.kanal_bilgisi(kanal)[0])
+              if not tanimli:
+                  print(f"{ad}: anahtar tanımlı değil (bu tür mesajlar ana bota gider)")
+                  continue
+              tok, chat = (b.os.getenv("TG_TOKEN"), b.os.getenv("TG_CHAT_ID")) if kanal == "ana" else b.kanal_bilgisi(kanal)
+              ok = b._gonder(tok, chat, f"✅ Test: {ad} botu çalışıyor.")
+              print(f"{ad}: {'GÖNDERİLDİ' if ok else 'GÖNDERİLEMEDİ (anahtar yanlış veya botta Başlat a basılmamış)'}")
+          PY
