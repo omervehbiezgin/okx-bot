@@ -21,7 +21,7 @@ OKX'teki TÜM USDT perpetual (futures) coinleri tarar. Dört tarama türü:
      (yakın temas dahil) geri gelince bir kez bildirim. Taramalar arasında her dakika kontrol edilir
      (python okx_scan_once.py --alarm).
 
-Ortam değişkenleri: TG_TOKEN, TG_CHAT_ID
+Ortam değişkenleri: TG_TOKEN, TG_CHAT_ID (+ isteğe bağlı TG_TOKEN_KIRILIM, TG_TOKEN_EMA, TG_TOKEN_RSI)
 """
 import os
 import sys
@@ -579,14 +579,24 @@ def analyze_fvg(inst, candle_open):
 
 
 # ---------------- Telegram / yardımcılar ----------------
-def send(msg):
-    """Uzun mesajı 4000 karakterde böler. Hepsi gittiyse True döner."""
-    print(plain(msg) + "\n", flush=True)
-    token, chat = os.getenv("TG_TOKEN"), os.getenv("TG_CHAT_ID")
-    if not (token and chat):
-        print("UYARI: TG_TOKEN veya TG_CHAT_ID tanımlı değil, Telegram'a mesaj gönderilmedi!")
-        return False
+# Her sinyal türü kendi Telegram botuna gider. Botun anahtarı (GitHub Secrets) tanımlı değilse ya da
+# o bot mesaj gönderemezse (ör. sohbette "Başlat"a basılmamış) mesaj ana bota (TG_TOKEN) gönderilir.
+#   ana     : TG_TOKEN          -> FVG'den dönüş + FVG fiyat alarmları (ve test mesajı)
+#   kirilim : TG_TOKEN_KIRILIM  -> yatay kırılım + kırılım fiyat alarmları
+#   ema     : TG_TOKEN_EMA      -> EMA gövde kesişimi
+#   rsi     : TG_TOKEN_RSI      -> RSI dönüşü
+# İstenirse botlara ayrı sohbet de verilebilir: TG_CHAT_ID_KIRILIM / _EMA / _RSI (yoksa TG_CHAT_ID).
+KANAL_ENV = {"ana": "", "kirilim": "_KIRILIM", "ema": "_EMA", "rsi": "_RSI"}
 
+
+def kanal_bilgisi(kanal):
+    ek = KANAL_ENV.get(kanal, "")
+    token = os.getenv("TG_TOKEN" + ek) if ek else None
+    chat = (os.getenv("TG_CHAT_ID" + ek) if ek else None) or os.getenv("TG_CHAT_ID")
+    return token, chat
+
+
+def _gonder(token, chat, msg):
     chunks, cur = [], ""
     for line in msg.split("\n"):
         if len(cur) + len(line) + 1 > 3500:
@@ -618,6 +628,21 @@ def send(msg):
             print("Telegram hatası:", e)
             ok = False
     return ok
+
+
+def send(msg, kanal="ana"):
+    """Mesajı sinyal türünün botuna gönderir (uzun mesajı böler). Hepsi gittiyse True döner."""
+    print(f"[{kanal}] " + plain(msg) + "\n", flush=True)
+    ana_token, ana_chat = os.getenv("TG_TOKEN"), os.getenv("TG_CHAT_ID")
+    token, chat = kanal_bilgisi(kanal)
+    if token and chat:
+        if _gonder(token, chat, msg):
+            return True
+        print(f"UYARI: '{kanal}' botu mesaj gönderemedi, ana bota gönderiliyor.")
+    if not (ana_token and ana_chat):
+        print("UYARI: TG_TOKEN veya TG_CHAT_ID tanımlı değil, Telegram'a mesaj gönderilmedi!")
+        return False
+    return _gonder(ana_token, ana_chat, msg)
 
 
 def fmt_usdt(v):
@@ -888,8 +913,11 @@ def alarm_kontrol(state, fitil=False):
             tetik.append((a, nasil, fiyat if fiyat is not None else a["seviye"]))
         else:
             kalan.append(a)
-    if tetik and not send(alarm_mesaji(tetik)):
-        return                                  # gönderilemediyse alarmlar kalsın, sonra tekrar denensin
+    # Kırılım alarmları kırılım botuna, FVG alarmları ana (FVG) bota; gönderilemeyenler sonra tekrar denenir
+    for tur, kanal in (("brk", "kirilim"), ("fvg", "ana")):
+        grup = [x for x in tetik if x[0]["tur"] == tur]
+        if grup and not send(alarm_mesaji(grup), kanal):
+            kalan += [x[0] for x in grup]
     state["ALARMS"] = kalan
     save_state(state)
 
@@ -922,7 +950,10 @@ def main():
         print("Alarm kontrolü hatası:", e)
 
     if manual:
-        send("✅ Test: OKX tarayıcı botu GitHub Actions üzerinde çalışıyor.")
+        send("✅ Test: OKX tarayıcı botu GitHub Actions üzerinde çalışıyor. (FVG botu)")
+        for kanal, ad in (("kirilim", "kırılım"), ("ema", "EMA"), ("rsi", "RSI")):
+            if kanal_bilgisi(kanal)[0]:
+                send(f"✅ Test: {ad} botu çalışıyor.", kanal)
     if not due:
         print("Taranacak yeni mum yok.")
         return
@@ -984,7 +1015,7 @@ def main():
                 text = msg_ema(name, cfg, hits)
             head, _, rest = text.partition("\n")
             text = head + "\n" + candle_stamp(candle_open, cfg["sec"], late) + ("\n" + rest if rest else "")
-            sent_ok = send(text)
+            sent_ok = send(text, {"brk": "kirilim", "fvg": "ana", "rsi": "rsi"}.get(kind, "ema"))
             if sent_ok:                          # mesajda görünen sinyaller için fiyat alarmı kur
                 if kind == "brk":
                     alarm_ekle(state, kirilim_alarmlari(name, hits[:MAX_ALERTS_PER_SCAN]))
