@@ -582,6 +582,8 @@ def simulate(s, a, i0, yon, emirler, stop0, iz, tp=None, bekle=None, iptal=None,
                          (yon == -1 and stop <= max(p for p, _, _ in bekleyen))):
             bekleyen = []
         j += 1
+    if not dolan:                                      # veri bitti, emir hiç dolmadı
+        return None
     if cikis is None:                                  # veri bitti / süre doldu: son kapanıştan kapat
         cikis = (c[son], FEE_TAKER, son)
     px, fee_out, jc = cikis
