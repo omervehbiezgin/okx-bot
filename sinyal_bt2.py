@@ -46,13 +46,17 @@ LIKIT = 10.0 if SPOT else 0.9 / KALDIRAC      # stop mesafesi bundan büyükse l
 SECILEN = {}                                  # bölüm -> (en iyi ayarın işlemleri, eğitim özeti, ayar adı)
 
 IZLER = [("yok", 0), ("be", 1.5), ("be", 2.0), ("be", 3.0), ("r1", 0)]
-TPLER = ["2R", "%10"]
+TPLER = os.getenv("BT_TPLER", "2R %10").split()       # ör. "%10 %20 %33 2R 3R yok"
+TUM = {}                                              # bölüm -> bütün ayarların işlemleri
 
 
 def hedef(tp, giris, stop, yon):
-    if tp == "2R":
-        return giris + 2 * abs(giris - stop) * yon
-    return giris * (1 + 0.10 * yon)
+    if tp == "yok":
+        return None
+    if tp.endswith("R"):
+        return giris + float(tp[:-1]) * abs(giris - stop) * yon
+    pct = float(tp.lstrip("%")) / 100
+    return giris * (1 + pct * yon) if yon == 1 else giris / (1 + pct)   # short: %100 = fiyatın yarısı
 
 
 def calistir(sinyaller, fn):
@@ -144,6 +148,7 @@ def bolum(baslik, varyantlar, t_split, gruplar=None, ozellikler=None, sonuc=None
     en_iyi = satir[0][0]
     isl = varyantlar[en_iyi]
     SECILEN[baslik] = (isl, satir[0][1], en_iyi, tum_varyant[en_iyi])
+    TUM[baslik] = tum_varyant
     out(f"\n**{baslik} — en iyi ayar: {en_iyi}**\n")
     out("| Dönem | Alınan işlem | Teminat yetmediği için atlanan | Son bakiye | Kâr / zarar | En büyük düşüş | En düşük bakiye | Aynı anda en çok açık |")
     out("|---|---|---|---|---|---|---|---|")
@@ -228,6 +233,56 @@ def tek_islem_bolumu(adaylar, now):
                 zs = tek_sim(k, mx, mod, t_split2)
                 out(f"| {b_} | {mx} | {mod} | {z['alinan']} / {z['atlanan']} | {z['son']:.1f} $ | {z['dd']:.1f} $ | "
                     f"{zs['alinan']} | {zs['son']:.1f} $ |")
+
+
+def tp_bolumu(now):
+    """Seçilen üç stratejide giriş/stop/bekleme sabit, sadece kâr al seviyesi değişir."""
+    t_bas2, t_split2 = now - GUN2 * DAY, now - 180 * DAY
+    ucu = ["EMA21 haftalık", "FVG — EMA filtreli", "Kırılım 4H — ana 3 yıldız"]
+    out("\n## 8) Kâr al seviyesi karşılaştırması (giriş, stop ve bekleme en iyi ayardaki gibi sabit)\n\n"
+        "%N = fiyat N% lehe gidince kâr al (short'ta fiyat 1/(1+N%) oranına inince; %100 = yarısı). "
+        "Teminat karşılığı: 10x'te %10, 5x'te %20, 3x'te %33, spotta %100 = teminatın iki katı. "
+        "yok = kâr al yok, işlem stopla ya da süre dolunca kapanır. 'Tek başına 5 işlem' = strateji tek başına, en fazla 5 açık işlem.\n")
+    secilen_tp = {}
+    for b_ in ucu:
+        if b_ not in SECILEN:
+            continue
+        en_iyi = SECILEN[b_][2]
+        govde = en_iyi.rsplit(" / tp ", 1)[0]
+        out(f"\n#### {b_} — {govde}\n")
+        out("| Kâr al | Eğitim işlem | Eğitim ort. R | Son dönem işlem | Son dönem ort. R | Kazanan | Ort. süre (gün) | "
+            "Tek başına 5 işlem: 2 yıl | düşüş | son 180 gün |")
+        out("|---|---|---|---|---|---|---|---|---|---|")
+        en, en_puan = None, -9
+        for tp in TPLER:
+            ad = f"{govde} / tp {tp}"
+            if ad not in TUM[b_]:
+                continue
+            k = TUM[b_][ad]
+            dolu = [x for x in k if not x.get("bos")]
+            t_split = t_split2 if not b_.startswith("Kırılım 4H") else now - DOG["4H"] * DAY
+            ze = ozet([x for x in dolu if x["t"] < t_split], 0)
+            zd = ozet([x for x in dolu if x["t"] >= t_split], 0)
+            k2 = [x for x in k if x["t"] >= t_bas2]
+            z5 = tek_sim(k2, 5, "a")
+            z5s = tek_sim(k2, 5, "a", t_split2)
+            sure = np.mean([(x["cikis_t"] - x["giris_t"]) / DAY for x in dolu]) if dolu else 0
+            out(f"| {tp} | {ze.get('n', 0)} | {ze.get('ortR', 0):+.2f} | {zd.get('n', 0)} | {zd.get('ortR', 0):+.2f} | "
+                f"{(ze.get('kazanan', 0)):.0%} | {sure:.1f} | {z5['son']:.0f} $ | {z5['dd']:.0f} $ | {z5s['son']:.0f} $ |")
+            if ze.get("n", 0) >= 30 and ze["ortR"] > en_puan:
+                en, en_puan = tp, ze["ortR"]
+        if en:
+            secilen_tp[b_] = TUM[b_][f"{govde} / tp {en}"]
+            out(f"\nEğitime göre en iyi kâr al: **{en}**")
+    if len(secilen_tp) == 3:
+        k = [x for b_ in secilen_tp for x in secilen_tp[b_] if x["t"] >= t_bas2]
+        out("\n#### Üçü birlikte, her biri eğitimde en iyi kâr al seviyesiyle\n")
+        out("| En fazla açık | 2 yıl işlem | 2 yıl bakiye | En büyük düşüş | Son 180 gün bakiye |")
+        out("|---|---|---|---|---|")
+        for mx in (3, 5, 10):
+            z = tek_sim(k, mx, "a")
+            zs = tek_sim(k, mx, "a", t_split2)
+            out(f"| {mx} | {z['alinan']} | {z['son']:.0f} $ | {z['dd']:.0f} $ | {zs['son']:.0f} $ |")
 
 
 KISA = {"EMA21 haftalık": "EMA21", "FVG — EMA filtreli": "FVG", "Kırılım 4H — ana 3 yıldız": "K4H★3",
@@ -565,6 +620,8 @@ def main():
 
     if os.getenv("BT_TEK") == "1":
         tek_islem_bolumu([b_ for b_, _ in secim], now)      # 5. bölümde seçilen stratejiler
+    if os.getenv("BT_TPTEST") == "1":
+        tp_bolumu(now)
     if os.getenv("BT_KOMBI") == "1":
         kombinasyon_bolumu([b_ for b_, _ in secim], now)
 
