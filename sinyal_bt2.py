@@ -214,6 +214,10 @@ def tek_islem_bolumu(adaylar, now):
     ikili = [x for b_, k in gruplar if b_ in ("EMA21 haftalık", "FVG — EMA filtreli") for x in k]
     if ikili:
         gruplar.append(("EMA21 haftalık + FVG", ikili))
+    adlar = dict(gruplar)
+    for ek in ("Kırılım 4H — ana 3 yıldız", "Kırılım 4H — ⚠️ notlu", "Kırılım 1D — ana"):
+        if ikili and ek in adlar:
+            gruplar.append((f"EMA21 + FVG + {ek}", ikili + adlar[ek]))
     out("| Strateji | En fazla açık | Emir kuralı | Son 2 yıl: işlem / atlanan | Son 2 yıl bakiye | En büyük düşüş | "
         "Son 180 gün: işlem | Son 180 gün bakiye |")
     out("|---|---|---|---|---|---|---|---|")
