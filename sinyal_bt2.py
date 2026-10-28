@@ -288,6 +288,101 @@ def tp_bolumu(now):
             out(f"| {mx} | {z['alinan']} | {z['son']:.0f} $ | {z['dd']:.0f} $ | {zs['son']:.0f} $ |")
 
 
+SECIM_FINAL = {"EMA21 haftalık": "giriş fvg / stop fvg / 2 hafta / yok / tp %10",
+               "FVG — EMA filtreli": "orta / 3 gün / yok / tp 2R",
+               "Kırılım 4H — ana 3 yıldız": "orta / 24 mum / yok / tp %33"}
+
+
+def tani_bolumu(now):
+    """Önerilen kurulumun ayrıntılı incelemesi: dönemler, yön, fonlama, bekleyen emirler, komşu ayarlar."""
+    t_bas2, t_split2 = now - GUN2 * DAY, now - 180 * DAY
+    out(f"\n## 9) Önerilen kurulumun incelemesi ({MOD}, dolum payı %{S.DOLUM_PAY * 100:.2f})\n")
+    kay = {}
+    for b_, ad in SECIM_FINAL.items():
+        if b_ in TUM and ad in TUM[b_]:
+            kay[b_] = [dict(x, strateji=b_) for x in TUM[b_][ad] if x["t"] >= t_bas2]
+        else:
+            out(f"- {b_}: '{ad}' bulunamadı")
+    hepsi = [x for v in kay.values() for x in v]
+    dolu = [x for x in hepsi if not x.get("bos")]
+    # 1) en fazla 3 ve 5 işlem
+    out("| En fazla açık | 2 yıl işlem | 2 yıl bakiye | En büyük düşüş | Son 180 gün bakiye |")
+    out("|---|---|---|---|---|")
+    for mx in (3, 5):
+        z, zs = tek_sim(hepsi, mx, "a"), tek_sim(hepsi, mx, "a", t_split2)
+        out(f"| {mx} | {z['alinan']} | {z['son']:.0f} $ | {z['dd']:.0f} $ | {zs['son']:.0f} $ |")
+    # 2) alınan işlemleri yeniden üret (en fazla 3) ve dönemlere böl
+    secilen = []
+    acik = []
+    for x in sorted(dolu, key=lambda x: x["giris_t"]):
+        acik = [a for a in acik if a[0] > x["giris_t"]]
+        if len(acik) >= 3 or any(a[1] == x.get("inst") for a in acik):
+            continue
+        acik.append((x["cikis_t"], x.get("inst")))
+        secilen.append(x)
+    out("\n**En fazla 3 işlemde alınan işlemler — çeyreklere göre**\n")
+    out("| Çeyrek | İşlem | Kazanan | Toplam $ | EMA21 $ | FVG $ | Kırılım $ |")
+    out("|---|---|---|---|---|---|---|")
+    ceyrek = {}
+    for x in secilen:
+        tm = time.gmtime(x["giris_t"])
+        ceyrek.setdefault(f"{tm.tm_year}-Ç{(tm.tm_mon - 1) // 3 + 1}", []).append(x)
+    for c in sorted(ceyrek):
+        v = ceyrek[c]
+        st = {b_: sum(y["R"] for y in v if y["strateji"] == b_) for b_ in SECIM_FINAL}
+        out(f"| {c} | {len(v)} | {np.mean([y['R'] > 0 for y in v]):.0%} | {sum(y['R'] for y in v):+.1f} | "
+            f"{st['EMA21 haftalık']:+.1f} | {st['FVG — EMA filtreli']:+.1f} | {st['Kırılım 4H — ana 3 yıldız']:+.1f} |")
+    # 3) yön ve strateji
+    out("\n| Grup | İşlem | Ort. R | Toplam $ | Ort. süre (gün) | Ort. stop mesafesi |")
+    out("|---|---|---|---|---|---|")
+    for ad, f in [("Long", lambda x: x["yon"] == 1), ("Short", lambda x: x["yon"] == -1)] + \
+                 [(KISA[b_], (lambda b_: lambda x: x["strateji"] == b_)(b_)) for b_ in SECIM_FINAL]:
+        v = [x for x in secilen if f(x)]
+        if v:
+            out(f"| {ad} | {len(v)} | {np.mean([y['R'] for y in v]):+.2f} | {sum(y['R'] for y in v):+.1f} $ | "
+                f"{np.mean([(y['cikis_t'] - y['giris_t']) / DAY for y in v]):.1f} | %{np.mean([y['risk_pct'] for y in v]) * 100:.1f} |")
+    # 4) fonlama ücreti tahmini (her 8 saatte pozisyonun %0.01'i, hep aleyhe varsayımıyla)
+    fon = sum(0.0001 * ((y["cikis_t"] - y["giris_t"]) / 28800) / y["risk_pct"] for y in secilen)
+    out(f"\n**Fonlama ücreti tahmini:** 8 saatte %0.01 ve hep aleyhe varsayılırsa en fazla 3 işlemde 2 yılda yaklaşık "
+        f"{fon:.1f} $ (işlem başına {fon / max(len(secilen), 1):.3f} $).")
+    # 5) bekleyen emir sayısı (a kuralı): sinyal anından dolum/iptal anına kadar
+    olay = []
+    for x in hepsi:
+        bas, bit = x["t"], (x["giris_t"] if not x.get("bos") else x["bitis"])
+        if bit > bas:
+            olay += [(bas, 1), (bit, -1)]
+    olay.sort()
+    n = en = 0
+    toplam = 0.0
+    for i, (t, d) in enumerate(olay):
+        n += d
+        en = max(en, n)
+        if i + 1 < len(olay):
+            toplam += n * (olay[i + 1][0] - t)
+    sure = (olay[-1][0] - olay[0][0]) if olay else 1
+    out(f"\n**Bekleyen limit emirler (ilk dolan alınır kuralı):** aynı anda en çok {en}, ortalama {toplam / max(sure, 1):.1f} emir. "
+        "OKX'te her bekleyen emir teminat ayırır; 100 $'lık hesapta bu sayı önemli.")
+    # 6) komşu ayarlar: aynı kâr alla bekleme süresi / giriş değişirse (tek başına en fazla 5 işlem)
+    out("\n**Komşu ayarlar (tek başına, en fazla 5 işlem, son 2 yıl / son 180 gün)**\n")
+    for b_, ad in SECIM_FINAL.items():
+        if b_ not in TUM:
+            continue
+        tp = ad.rsplit(" / tp ", 1)[1]
+        satir = []
+        for ad2, k in TUM[b_].items():
+            if ad2.endswith(f"/ tp {tp}"):
+                k2 = [x for x in k if x["t"] >= t_bas2]
+                z, zs = tek_sim(k2, 5, "a"), tek_sim(k2, 5, "a", t_split2)
+                satir.append((z["son"], f"| {ad2}{' ⬅ seçilen' if ad2 == ad else ''} | {z['son']:.0f} $ | {z['dd']:.0f} $ | {zs['son']:.0f} $ |"))
+        out(f"\n{b_} — en iyi 8 ve seçilen\n")
+        out("| Ayar | 2 yıl | Düşüş | Son 180 gün |")
+        out("|---|---|---|---|")
+        satir.sort(reverse=True)
+        gosterilen = satir[:8] + [s_ for s_ in satir[8:] if "seçilen" in s_[1]]
+        for _, ss in gosterilen:
+            out(ss)
+
+
 KISA = {"EMA21 haftalık": "EMA21", "FVG — EMA filtreli": "FVG", "Kırılım 4H — ana 3 yıldız": "K4H★3",
         "Kırılım 4H — ⚠️ notlu": "K4H⚠️", "Kırılım 1D — ana": "K1D", "RSI 1W": "RSI-W"}
 
@@ -514,7 +609,7 @@ def main():
                                         sev = we[wc] if wc >= sg["i"] and not np.isnan(we[wc]) else sg["e"]
                                     if (sev - st) * yon <= 0:
                                         return None
-                                    if (yon == 1 and d["l"][j] <= sev) or (yon == -1 and d["h"][j] >= sev):
+                                    if (yon == 1 and d["l"][j] <= sev * (1 - S.DOLUM_PAY)) or (yon == -1 and d["h"][j] >= sev * (1 + S.DOLUM_PAY)):
                                         return simulate(d, ad_, j, yon, [(sev, 1.0, st)], st, iz,
                                                         tp=hedef(tp, sev, st, yon), bekle=1)
                                     if wk >= 0 and d["t"][j] + DAY == w["t"][wk] + 7 * DAY and not np.isnan(we[wk]):
@@ -623,6 +718,8 @@ def main():
 
     if os.getenv("BT_TEK") == "1":
         tek_islem_bolumu([b_ for b_, _ in secim], now)      # 5. bölümde seçilen stratejiler
+    if os.getenv("BT_TANI") == "1":
+        tani_bolumu(now)
     if os.getenv("BT_TPTEST") == "1":
         tp_bolumu(now)
     if os.getenv("BT_KOMBI") == "1":

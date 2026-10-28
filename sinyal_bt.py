@@ -56,6 +56,7 @@ MAX_COIN = int(os.getenv("BT_MAX_COIN", "0"))    # 0 = hepsi (deneme için sın�
 DOG = {"KIR": 30, "FVG": 45, "RSI": 180, "EMA": 180}
 
 FEE_MAKER, FEE_TAKER, KAYMA = 0.0002, 0.0005, 0.0003
+DOLUM_PAY = float(os.getenv("BT_DOLUM_PAY", "0"))   # limit emir ancak fiyat seviyeyi bu oran kadar geçerse dolmuş sayılır
 TF_SEC = {"15m": 900, "1H": 3600, "4H": 14400, "1D": 86400, "1W": 604800}
 
 
@@ -523,7 +524,7 @@ def simulate(s, a, i0, yon, emirler, stop0, iz, tp=None, bekle=None, iptal=None,
                     return None
             kalan = []
             for fiyat, w, st in bekleyen:
-                if (yon == 1 and l[j] <= fiyat) or (yon == -1 and h[j] >= fiyat):
+                if (yon == 1 and l[j] <= fiyat * (1 - DOLUM_PAY)) or (yon == -1 and h[j] >= fiyat * (1 + DOLUM_PAY)):
                     px = min(o[j], fiyat) if yon == 1 else max(o[j], fiyat)
                     dolan.append((px, w, FEE_MAKER))
                     stop = st if stop is None else (min(stop, st) if yon == 1 else max(stop, st))

@@ -24,6 +24,9 @@ on:
       tp_secim:
         description: "Birlikte testte elle kâr al (ör. EMA21=%10;FVG=2R;K4H★3=%33)"
         default: ""
+      dolum_pay:
+        description: "Limit emir dolumu için fiyatın seviyeyi geçmesi gereken oran (0.001 = %0.1)"
+        default: "0"
 
 permissions:
   contents: write              # sadece sonuç dalına yazmak için
@@ -63,6 +66,8 @@ jobs:
           BT_TPTEST: "1"
           BT_TPLER: ${{ inputs.tpler || '2R %10' }}
           BT_TP_SECIM: ${{ inputs.tp_secim || '' }}
+          BT_DOLUM_PAY: ${{ inputs.dolum_pay || '0' }}
+          BT_TANI: "1"
       - name: Test verisini kaydet
         if: always()
         uses: actions/cache/save@v4
