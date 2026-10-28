@@ -271,12 +271,15 @@ def tp_bolumu(now):
                 f"{(ze.get('kazanan', 0)):.0%} | {sure:.1f} | {z5['son']:.0f} $ | {z5['dd']:.0f} $ | {z5s['son']:.0f} $ |")
             if ze.get("n", 0) >= 30 and ze["ortR"] > en_puan:
                 en, en_puan = tp, ze["ortR"]
+        zorla = dict(x.split("=") for x in os.getenv("BT_TP_SECIM", "").split(";") if "=" in x)
+        if zorla.get(KISA.get(b_, b_)) and f"{govde} / tp {zorla[KISA.get(b_, b_)]}" in TUM[b_]:
+            en = zorla[KISA.get(b_, b_)]                  # elle seçilen kâr al (BT_TP_SECIM="EMA21=%10;FVG=2R;K4H★3=%33")
         if en:
             secilen_tp[b_] = TUM[b_][f"{govde} / tp {en}"]
             out(f"\nEğitime göre en iyi kâr al: **{en}**")
     if len(secilen_tp) == 3:
         k = [x for b_ in secilen_tp for x in secilen_tp[b_] if x["t"] >= t_bas2]
-        out("\n#### Üçü birlikte, her biri eğitimde en iyi kâr al seviyesiyle\n")
+        out(f"\n#### Üçü birlikte ({', '.join(f'{KISA.get(b_, b_)}' for b_ in secilen_tp)}; kâr al: {os.getenv('BT_TP_SECIM') or 'eğitimde en iyi'})\n")
         out("| En fazla açık | 2 yıl işlem | 2 yıl bakiye | En büyük düşüş | Son 180 gün bakiye |")
         out("|---|---|---|---|---|")
         for mx in (3, 5, 10):
