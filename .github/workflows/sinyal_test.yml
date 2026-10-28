@@ -15,6 +15,9 @@ on:
       betik:
         description: "Test betiği (sinyal_bt.py = ilk test, sinyal_bt2.py = kullanıcı kurallarıyla ikinci test)"
         default: "sinyal_bt2.py"
+      modlar:
+        description: "sinyal_bt2.py için modlar (10x 5x 3x spot)"
+        default: "10x 5x 3x spot"
 
 permissions:
   contents: write              # sadece sonuç dalına yazmak için
@@ -38,7 +41,14 @@ jobs:
           key: sinyal-bt-${{ github.run_id }}
           restore-keys: sinyal-bt-
       - run: pip install requests numpy pandas
-      - run: python ${{ inputs.betik || 'sinyal_bt2.py' }}
+      - name: Testi calistir
+        run: |
+          BETIK="${{ inputs.betik || 'sinyal_bt2.py' }}"
+          if [ "$BETIK" = "sinyal_bt2.py" ]; then
+            for m in ${{ inputs.modlar || '10x 5x 3x spot' }}; do BT_MOD=$m python sinyal_bt2.py; done
+          else
+            python "$BETIK"
+          fi
         env:
           BT_TOP: ${{ inputs.top || '100' }}
           BT_MAX_COIN: ${{ inputs.max_coin || '0' }}
@@ -51,8 +61,8 @@ jobs:
       - name: Sonuclari sinyal-test-sonuclari dalina yaz
         if: always()
         run: |
-          [ -f sinyal_sonuc.md ] || exit 0
-          mkdir -p /tmp/sonuc && cp sinyal_sonuc.* /tmp/sonuc/
+          ls sinyal_sonuc* >/dev/null 2>&1 || exit 0
+          mkdir -p /tmp/sonuc && cp sinyal_sonuc* /tmp/sonuc/
           cd /tmp/sonuc
           git init -q -b sinyal-test-sonuclari
           git config user.name "github-actions"
