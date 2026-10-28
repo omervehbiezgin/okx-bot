@@ -33,6 +33,8 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+import kagit                                     # kâğıt üzerinde (sanal) işlem takibi
+
 BASE = "https://www.okx.com"
 STATE_FILE = "state.json"
 
@@ -948,6 +950,12 @@ def main():
         alarm_kontrol(state, fitil=True)        # her 15 dakikada: anlık fiyat + son mumların fitilleri
     except Exception as e:
         print("Alarm kontrolü hatası:", e)
+    try:
+        kagit.bakim(state)                      # kâğıt işlem: emir iptalleri, fonlama, günlük özet
+        kagit.kontrol(state, fitil=True)
+        save_state(state)
+    except Exception as e:
+        print("Kâğıt işlem hatası:", e)
 
     if manual:
         send("✅ Test: OKX tarayıcı botu GitHub Actions üzerinde çalışıyor. (FVG botu)")
@@ -1021,6 +1029,11 @@ def main():
                     alarm_ekle(state, kirilim_alarmlari(name, hits[:MAX_ALERTS_PER_SCAN]))
                 elif kind == "fvg":
                     alarm_ekle(state, fvg_alarmlari(hits))
+            if sent_ok:                          # kâğıt işlem: seçilen stratejiler için sanal emir
+                try:
+                    kagit.sinyal_ekle(state, kind, name.replace("utc", ""), hits, candle_open, cfg["sec"])
+                except Exception as e:
+                    print("Kâğıt sinyal hatası:", e)
 
         if sent_ok:
             state[key] = candle_open
@@ -1028,11 +1041,18 @@ def main():
 
 
 if __name__ == "__main__":
+    kagit.B = sys.modules[__name__]
     if "--alarm" in sys.argv:                    # taramalar arasındaki dakikalık alarm kontrolü
+        st = load_state()
         try:
-            alarm_kontrol(load_state())
+            alarm_kontrol(st)
         except Exception as e:
             print("Alarm kontrolü hatası:", e)
+        try:
+            kagit.kontrol(st)
+            save_state(st)
+        except Exception as e:
+            print("Kâğıt işlem hatası:", e)
         sys.exit(0)
     try:
         main()
