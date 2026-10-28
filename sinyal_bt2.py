@@ -230,6 +230,42 @@ def tek_islem_bolumu(adaylar, now):
                     f"{zs['alinan']} | {zs['son']:.1f} $ |")
 
 
+KISA = {"EMA21 haftalık": "EMA21", "FVG — EMA filtreli": "FVG", "Kırılım 4H — ana 3 yıldız": "K4H★3",
+        "Kırılım 4H — ⚠️ notlu": "K4H⚠️", "Kırılım 1D — ana": "K1D", "RSI 1W": "RSI-W"}
+
+
+def kombinasyon_bolumu(adlar, now):
+    from itertools import combinations
+    t_bas2, t_split2 = now - GUN2 * DAY, now - 180 * DAY
+    kay = {b_: [x for x in SECILEN[b_][3] if x["t"] >= t_bas2] for b_ in adlar if b_ in SECILEN}
+    adlar = list(kay)
+    out(f"\n## 7) Bütün kombinasyonlar — {MOD}, ilk dolan alınır (a)\n\n"
+        f"Stratejiler: {', '.join(f'{KISA.get(b_, b_)} = {b_} ({SECILEN[b_][2]})' for b_ in adlar)}. "
+        "Oran = 2 yıllık kâr / en büyük düşüş (yüksek = az dalgalanmayla çok kazanç). Hepsi 100 $ ile başlar, işlem başına 1 $ risk.\n")
+    sonuclar = []
+    for n in range(1, len(adlar) + 1):
+        for kombi in combinations(adlar, n):
+            k = [x for b_ in kombi for x in kay[b_]]
+            for mx in (1, 2, 3, 5, 10, 10 ** 6):
+                z = tek_sim(k, mx, "a")
+                zs = tek_sim(k, mx, "a", t_split2)
+                oran = (z["son"] - BAKIYE) / z["dd"] if z["dd"] > 0 else 0
+                sonuclar.append(dict(ad=" + ".join(KISA.get(b_, b_) for b_ in kombi), mx=mx, son=z["son"], dd=z["dd"],
+                                     islem=z["alinan"], son180=zs["son"], dd180=zs["dd"], oran=oran))
+    for mx in (1, 2, 3, 5, 10, 10 ** 6):
+        grup = [r for r in sonuclar if r["mx"] == mx]
+        ad_mx = "sınırsız" if mx > 1000 else f"en fazla {mx}"
+        for baslik, anahtar in (("son 180 günün kârına göre", "son180"), ("kâr / düşüş oranına göre", "oran")):
+            out(f"\n#### Açık işlem {ad_mx} — {baslik} en iyi 5\n")
+            out("| Kombinasyon | 2 yıl işlem | 2 yıl bakiye | En büyük düşüş | Oran | Son 180 gün bakiye | Son 180 gün düşüş |")
+            out("|---|---|---|---|---|---|---|")
+            for r in sorted(grup, key=lambda r: r[anahtar], reverse=True)[:5]:
+                out(f"| {r['ad']} | {r['islem']} | {r['son']:.0f} $ | {r['dd']:.0f} $ | {r['oran']:.1f} | "
+                    f"{r['son180']:.0f} $ | {r['dd180']:.0f} $ |")
+    with open(f"sinyal_kombi_{MOD}.json", "w") as f:
+        json.dump(sonuclar, f)
+
+
 def main():
     t0 = time.time()
     data, symbols, top, now = S.load_data()
@@ -529,6 +565,8 @@ def main():
 
     if os.getenv("BT_TEK") == "1":
         tek_islem_bolumu([b_ for b_, _ in secim], now)      # 5. bölümde seçilen stratejiler
+    if os.getenv("BT_KOMBI") == "1":
+        kombinasyon_bolumu([b_ for b_, _ in secim], now)
 
     out(f"\nToplam süre: {(time.time() - t0) / 60:.0f} dk")
     with open(OUT_MD, "w") as f:

@@ -53,6 +53,7 @@ jobs:
           BT_TOP: ${{ inputs.top || '100' }}
           BT_MAX_COIN: ${{ inputs.max_coin || '0' }}
           BT_TEK: "1"
+          BT_KOMBI: "1"
       - name: Test verisini kaydet
         if: always()
         uses: actions/cache/save@v4
@@ -63,7 +64,7 @@ jobs:
         if: always()
         run: |
           ls sinyal_sonuc* >/dev/null 2>&1 || exit 0
-          mkdir -p /tmp/sonuc && cp sinyal_sonuc* /tmp/sonuc/
+          mkdir -p /tmp/sonuc && cp sinyal_sonuc* sinyal_kombi* /tmp/sonuc/ 2>/dev/null || cp sinyal_sonuc* /tmp/sonuc/
           cd /tmp/sonuc
           git init -q -b sinyal-test-sonuclari
           git config user.name "github-actions"
