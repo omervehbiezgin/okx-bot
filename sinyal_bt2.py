@@ -211,11 +211,14 @@ def tek_islem_bolumu(adaylar, now):
     for b_, k in gruplar:
         birlikte += k
     gruplar.append(("HEPSİ BİRLİKTE", birlikte))
+    ikili = [x for b_, k in gruplar if b_ in ("EMA21 haftalık", "FVG — EMA filtreli") for x in k]
+    if ikili:
+        gruplar.append(("EMA21 haftalık + FVG", ikili))
     out("| Strateji | En fazla açık | Emir kuralı | Son 2 yıl: işlem / atlanan | Son 2 yıl bakiye | En büyük düşüş | "
         "Son 180 gün: işlem | Son 180 gün bakiye |")
     out("|---|---|---|---|---|---|---|---|")
     for b_, k in gruplar:
-        for mx in (1, 3):
+        for mx in (1, 2, 3):
             for mod in ("a", "b"):
                 z = tek_sim(k, mx, mod)
                 zs = tek_sim(k, mx, mod, t_split2)
