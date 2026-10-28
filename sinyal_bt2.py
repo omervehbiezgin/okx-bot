@@ -1,0 +1,424 @@
+"""
+Sinyal geçmiş testi 2 (sinyal_bt2.py) - kullanıcının işlem kurallarıyla, 100 $ bakiye simülasyonu.
+
+Veri ve sinyal kuralları sinyal_bt.py ile ortak (botla birebir aynı). Telegram'a mesaj göndermez.
+
+KIRILIM (15m, 1H: hacme göre ilk 100 coin, 120 gün | 4H, 1D: bütün coinler, 2 yıl)
+  Yön filtresi: long ancak kapanış günlük EMA200 VEYA haftalık EMA21 üstündeyse; short tersi
+  Giriş: A) kırılan bant çizgisine limit  B) bant ortasına limit
+  Stop : bandın öbür ucu + bant genişliğinin %10'u
+  Gruplar: ana (⚠️ hariç) | ana, sadece 2-3 yıldız | 0-1 yıldız (⚠️ hariç) | ⚠️ (ana stratejiye katılmaz)
+FVG'DEN DÖNÜŞ (bütün coinler, 2 yıl)
+  Giriş: A) tepki çizgisi (destekte üst, dirençte alt çizgi) B) FVG ortası; EMA filtresi var / yok
+  Stop : FVG'nin öbür ucu + 0.1 x günlük ATR
+EMA21 HAFTALIK (bütün coinler, bütün geçmiş)
+  Giriş: A) en yakın günlük FVG sınırı B) EMA21 çizgisi (her hafta güncellenir)
+  Stop : kesişim mumunun dibi / tepesi VEYA FVG'nin öbür ucu (+ 0.1 x günlük ATR)
+RSI (günlük, haftalık; bütün coinler, bütün geçmiş)
+  Giriş: A) RSI 30 üstünde (short: 70 altında) kapanınca B) + RSI'ın SMA14'ünü kesmesi (-2..+5 mum)
+  Stop : dönüş sırasındaki en uç fiyat + 0.1 x ATR
+Hepsinde: iz süren stop yok | 1R'de başa baş + 1.5/2/3 x ATR | 1R geriden (EMA21: yok | 1R kârdan sonra 1R geriden)
+          kâr al 2R | fiyat %10 lehe (10x kaldıraçta teminatın iki katı); emir bekleme süreleri karşılaştırılır.
+Bakiye: 100 $, her işlemde risk 1 $, kaldıraç 10x; teminat (pozisyon / 10) yetmezse işlem atlanır,
+        stop mesafesi %9'dan büyükse (likidasyon stoptan önce gelir) işlem açılmaz.
+"""
+import time
+import bisect
+import json
+
+import numpy as np
+
+import sinyal_bt as S
+from sinyal_bt import DAY, TF_SEC, arr, atr, ema, simulate, ozet, out, lines
+
+OUT_MD, OUT_JSON = "sinyal_sonuc.md", "sinyal_sonuc.json"
+GUN2 = 730
+DOG = {"15m": 30, "1H": 30, "4H": 180, "1D": 180, "FVG": 180, "EMA": 180, "RSI": 180}
+KALDIRAC, BAKIYE, RISK = 10, 100.0, 1.0
+LIKIT = 0.09
+
+IZLER = [("yok", 0), ("be", 1.5), ("be", 2.0), ("be", 3.0), ("r1", 0)]
+TPLER = ["2R", "%10"]
+
+
+def hedef(tp, giris, stop, yon):
+    if tp == "2R":
+        return giris + 2 * abs(giris - stop) * yon
+    return giris * (1 + 0.10 * yon)
+
+
+def calistir(sinyaller, fn):
+    """Aynı coinde aynı anda tek işlem; stop mesafesi %9'dan büyük işlemler açılmaz (likidasyon)."""
+    sonuc, mesgul = [], -1
+    for sg in sinyaller:
+        if sg["t"] < mesgul:
+            continue
+        r = fn(sg)
+        if r is None:
+            mesgul = sg.get("emir_bitis", sg["t"])
+            continue
+        if r["risk_pct"] >= LIKIT:
+            mesgul = r["cikis_t"]
+            continue
+        for k, v in sg.items():
+            if k not in r and not isinstance(v, (list, dict, np.ndarray)):
+                r[k] = v
+        sonuc.append(r)
+        mesgul = r["cikis_t"]
+    return sonuc
+
+
+def bakiye_sim(islemler, t_bas=None):
+    """100 $ bakiye, işlem başına 1 $ risk, 10x; teminat yetmezse işlem atlanır."""
+    isl = sorted([x for x in islemler if t_bas is None or x["giris_t"] >= t_bas], key=lambda x: x["giris_t"])
+    bakiye, acik, alinan, atlanan, en_cok = BAKIYE, [], 0, 0, 0
+    tepe, dd, en_dusuk = BAKIYE, 0.0, BAKIYE
+    for x in isl:
+        kapanan = [a for a in acik if a[0] <= x["giris_t"]]
+        for a in sorted(kapanan):
+            bakiye += a[2]
+            tepe = max(tepe, bakiye)
+            dd = max(dd, tepe - bakiye)
+            en_dusuk = min(en_dusuk, bakiye)
+        acik = [a for a in acik if a[0] > x["giris_t"]]
+        if bakiye <= 0:
+            break
+        teminat = RISK / x["risk_pct"] / KALDIRAC
+        if teminat > bakiye - sum(a[1] for a in acik):
+            atlanan += 1
+            continue
+        acik.append((x["cikis_t"], teminat, x["R"] * RISK))
+        alinan += 1
+        en_cok = max(en_cok, len(acik))
+    for a in sorted(acik):
+        bakiye += a[2]
+        tepe = max(tepe, bakiye)
+        dd = max(dd, tepe - bakiye)
+        en_dusuk = min(en_dusuk, bakiye)
+    return dict(son=bakiye, alinan=alinan, atlanan=atlanan, dd=dd, en_dusuk=en_dusuk, en_cok=en_cok)
+
+
+def tablo(baslik, satirlar):
+    out(f"\n#### {baslik}\n")
+    out("| Ayar | Eğitim işlem | Eğitim ort. R | Eğitim kazanan | Eğitim PF | Son dönem işlem | Son dönem ort. R | "
+        "Son dönem kazanan | Son dönem PF | En kötü seri |")
+    out("|---|---|---|---|---|---|---|---|---|---|")
+    for ad, ze, zd in satirlar:
+        def f(z, k, fmt):
+            return fmt.format(z[k]) if z.get("n") and z.get(k) is not None else "-"
+        out(f"| {ad}{' ⚠️az' if ze.get('n', 0) < 30 else ''} | {ze.get('n', 0)} | {f(ze, 'ortR', '{:+.2f}')} | "
+            f"{f(ze, 'kazanan', '{:.0%}')} | {f(ze, 'pf', '{:.2f}')} | {zd.get('n', 0)} | "
+            f"{f(zd, 'ortR', '{:+.2f}')} | {f(zd, 'kazanan', '{:.0%}')} | {f(zd, 'pf', '{:.2f}')} | {ze.get('seri', '-')} |")
+
+
+def bakiye_satiri(ad, b):
+    out(f"| {ad} | {b['alinan']} | {b['atlanan']} | {b['son']:.1f} $ | {b['son'] - BAKIYE:+.1f} $ | "
+        f"{b['dd']:.1f} $ | {b['en_dusuk']:.1f} $ | {b['en_cok']} |")
+
+
+def bolum(baslik, varyantlar, t_split, gruplar=None, ozellikler=None, sonuc=None):
+    """varyantlar: {ad: işlemler}. En iyi 12 ayarı ve en iyisinin bakiye simülasyonunu yazar."""
+    satir = []
+    for ad, isl in varyantlar.items():
+        egit = [x for x in isl if x["t"] < t_split]
+        dog = [x for x in isl if x["t"] >= t_split]
+        satir.append((ad, ozet(egit, len(egit)), ozet(dog, len(dog))))
+    satir.sort(key=lambda x: (x[1].get("n", 0) >= 30, x[1].get("ortR", -99)), reverse=True)
+    tablo(f"{baslik}: eğitim dönemine göre en iyi 12 ayar", satir[:12])
+    if sonuc is not None:
+        sonuc[baslik] = {ad: dict(egitim=ze, dogrulama=zd) for ad, ze, zd in satir}
+    if not satir or not satir[0][1].get("n"):
+        return None
+    en_iyi = satir[0][0]
+    isl = varyantlar[en_iyi]
+    out(f"\n**{baslik} — en iyi ayar: {en_iyi}**\n")
+    out("| Dönem | Alınan işlem | Teminat yetmediği için atlanan | Son bakiye | Kâr / zarar | En büyük düşüş | En düşük bakiye | Aynı anda en çok açık |")
+    out("|---|---|---|---|---|---|---|---|")
+    bakiye_satiri("Tüm dönem (100 $ ile başlayarak)", bakiye_sim(isl))
+    bakiye_satiri("Sadece son dönem (100 $ ile başlayarak)", bakiye_sim(isl, t_split))
+    if ozellikler:
+        parca = []
+        for ad, f in ozellikler:
+            alt = [x for x in isl if f(x)]
+            parca.append((ad, ozet([x for x in alt if x["t"] < t_split], 0), ozet([x for x in alt if x["t"] >= t_split], 0)))
+        tablo(f"{baslik} — en iyi ayar, sinyal özelliklerine göre", parca)
+    return en_iyi
+
+
+def main():
+    t0 = time.time()
+    data, symbols, top, now = S.load_data()
+    sonuc = {}
+    out(f"# Sinyal geçmiş testi 2 — sizin kurallarınızla\n\n{len(data)} coin, test tarihi "
+        f"{time.strftime('%Y-%m-%d', time.gmtime(now))}. R = 1 $ risk; ortalama +0.20R = işlem başına +0,20 $. "
+        f"Ücret: limit %0.02, piyasa/stop %0.05 + %0.03 kayma. Bakiye: 100 $, işlem başına 1 $ risk, 10x kaldıraç. "
+        f"'Eğitim' dönemi ayar seçmek, 'son dönem' sınamak içindir.\n")
+
+    hazir = {}
+    for inst, dd in data.items():
+        d = arr(dd["1D"])
+        if len(d["c"]) < 30:
+            continue
+        zones, fvg_open, datr = S.daily_fvg(d)
+        w = arr(S.weekly_from_daily(dd["1D"]))
+        hazir[inst] = dict(d=d, w=w, zones=zones, fvg_open=fvg_open, datr=datr,
+                           e200=ema(d["c"], 200), e21w=ema(w["c"], 21) if len(w["c"]) >= 21 else np.full(len(w["c"]), np.nan))
+
+    def ema_izin(H, T, fiyat, yon):
+        di = S.day_index(H["d"], T)
+        wi = bisect.bisect_right(H["w"]["t"], T - 7 * DAY) - 1
+        e1 = H["e200"][di] if di >= 0 else np.nan
+        e2 = H["e21w"][wi] if wi >= 0 else np.nan
+        if yon == 1:
+            return (not np.isnan(e1) and fiyat > e1) or (not np.isnan(e2) and fiyat > e2)
+        return (not np.isnan(e1) and fiyat < e1) or (not np.isnan(e2) and fiyat < e2)
+
+    # ===================== 1) KIRILIM =====================
+    out("\n## 1) Kırılım\n\nYön filtresi her zaman açık (long: günlük EMA200 veya haftalık EMA21 üstü; short: tersi). "
+        "Ana strateji ⚠️ notluları içermez. Giriş: cizgi = kırılan bant çizgisi, orta = bant ortası. "
+        "İz: yok / be k = 1R'de başa baş sonra k x ATR / r1 = 1R geriden. Bekleme mum sayısıdır.\n")
+    bekle_tf = {"15m": (24, 48, 96), "1H": (24, 48, 96), "4H": (24, 48, 96), "1D": (3, 5, 10)}
+    tut_tf = {"15m": 7 * 96, "1H": 21 * 24, "4H": 60 * 6, "1D": 180}
+    for tf in ("15m", "1H", "4H", "1D"):
+        t_bas = now - (120 if tf in ("15m", "1H") else GUN2) * DAY
+        t_split = now - DOG[tf] * DAY
+        gruplar = {"ana": {}, "ana 2-3 yıldız": {}, "0-1 yıldız": {}, "⚠️ notlu": {}}
+        n_sig = 0
+        coinler = top if tf in ("15m", "1H") else list(hazir)
+        for inst in coinler:
+            if inst not in hazir or inst not in data:
+                continue
+            H = hazir[inst]
+            if tf == "1D":
+                s, htf_s, htf_sec = H["d"], H["w"], 7 * DAY
+            elif tf == "4H":
+                s, htf_s, htf_sec = arr(data[inst]["4H"]), H["d"], DAY
+            else:
+                if tf not in data[inst]:
+                    continue
+                s = arr(data[inst][tf])
+                htf = "1H" if tf == "15m" else "4H"
+                htf_s, htf_sec = arr(data[inst][htf]), TF_SEC[htf]
+            if len(s["c"]) < 120:
+                continue
+            sigs = S.kirilim_sinyalleri(s, tf, htf_s, htf_sec, H["d"], H["fvg_open"], t_bas)
+            sigs = [x for x in sigs if ema_izin(H, x["t"], x["c"], x["yon"])]
+            n_sig += len(sigs)
+            a, _ = atr(s["h"], s["l"], s["c"])
+            c = s["c"]
+            sec = TF_SEC[tf]
+            secim = {"ana": [x for x in sigs if not x["uyari"]],
+                     "ana 2-3 yıldız": [x for x in sigs if not x["uyari"] and x["stars"] >= 2],
+                     "0-1 yıldız": [x for x in sigs if not x["uyari"] and x["stars"] <= 1],
+                     "⚠️ notlu": [x for x in sigs if x["uyari"]]}
+            for g in ("cizgi", "orta"):
+                for bk in bekle_tf[tf]:
+                    for iz in IZLER:
+                        for tp in TPLER:
+                            def fn(sg, g=g, bk=bk, iz=iz, tp=tp):
+                                yon, hi, lo = sg["yon"], sg["hi"], sg["lo"]
+                                w_ = hi - lo
+                                cizgi, orta, dip = (hi, (hi + lo) / 2, lo) if yon == 1 else (lo, (hi + lo) / 2, hi)
+                                st = dip - 0.10 * w_ * yon
+                                giris = cizgi if g == "cizgi" else orta
+                                sg["emir_bitis"] = sg["t"] + bk * sec
+                                return simulate(s, a, sg["i"] + 1, yon, [(giris, 1.0, st)], st, iz,
+                                                tp=hedef(tp, giris, st, yon), bekle=bk,
+                                                iptal=lambda j: (yon == 1 and c[j] < dip) or (yon == -1 and c[j] > dip),
+                                                max_bar=tut_tf[tf])
+                            ad = f"{g} / {bk} mum / {iz[0]} {iz[1] or ''} / tp {tp}".replace("  ", " ")
+                            for gr, liste in secim.items():
+                                gruplar[gr].setdefault(ad, []).extend(calistir([dict(x) for x in liste], fn))
+        out(f"\n### Kırılım {tf} — EMA filtresinden geçen {n_sig} sinyal "
+            f"({'ilk 100 coin, 120 gün' if tf in ('15m', '1H') else 'bütün coinler, 2 yıl'}; son dönem = son {DOG[tf]} gün)")
+        oz = [("Long", lambda x: x["yon"] == 1), ("Short", lambda x: x["yon"] == -1),
+              ("✅ var", lambda x: x["iyi"]), ("✅ yok", lambda x: not x["iyi"]),
+              ("2 yıldız", lambda x: x["stars"] == 2), ("3 yıldız", lambda x: x["stars"] == 3)]
+        for gr in ("ana", "ana 2-3 yıldız", "0-1 yıldız", "⚠️ notlu"):
+            if gr in ("ana 2-3 yıldız", "0-1 yıldız") and tf not in ("15m", "1H"):
+                continue
+            bolum(f"Kırılım {tf} — {gr}", gruplar[gr], t_split, ozellikler=oz if gr == "ana" else None, sonuc=sonuc)
+        print(f"Kırılım {tf} bitti ({(time.time() - t0) / 60:.0f} dk)", flush=True)
+
+    # ===================== 2) FVG'DEN DÖNÜŞ =====================
+    t_bas = now - GUN2 * DAY
+    t_split = now - DOG["FVG"] * DAY
+    fvg_var = {"filtresiz": {}, "EMA filtreli": {}}
+    n_sig = 0
+    for inst, H in hazir.items():
+        s4 = arr(data[inst]["4H"])
+        if len(s4["c"]) < 60:
+            continue
+        sigs = S.fvg_sinyalleri(s4, H["d"], H["zones"], H["datr"], t_bas)
+        n_sig += len(sigs)
+        a4, _ = atr(s4["h"], s4["l"], s4["c"])
+        c4 = s4["c"]
+        filtreli = [x for x in sigs if ema_izin(H, x["t"], c4[x["i"]], x["yon"])]
+        for g in ("cizgi", "orta"):
+            for gun in (1, 3, 7):
+                for iz in IZLER:
+                    for tp in TPLER:
+                        def fn(sg, g=g, gun=gun, iz=iz, tp=tp):
+                            yon, alt, ust = sg["yon"], sg["alt"], sg["ust"]
+                            st = (alt if yon == 1 else ust) - sg["pay"] * yon
+                            giris = (ust if yon == 1 else alt) if g == "cizgi" else (alt + ust) / 2
+                            sg["emir_bitis"] = sg["t"] + gun * DAY
+                            return simulate(s4, a4, sg["i"] + 1, yon, [(giris, 1.0, st)], st, iz,
+                                            tp=hedef(tp, giris, st, yon), bekle=gun * 6,
+                                            iptal=lambda j: (yon == 1 and c4[j] < alt) or (yon == -1 and c4[j] > ust),
+                                            max_bar=60 * 6)
+                        ad = f"{g} / {gun} gün / {iz[0]} {iz[1] or ''} / tp {tp}".replace("  ", " ")
+                        fvg_var["filtresiz"].setdefault(ad, []).extend(calistir([dict(x) for x in sigs], fn))
+                        fvg_var["EMA filtreli"].setdefault(ad, []).extend(calistir([dict(x) for x in filtreli], fn))
+    out(f"\n## 2) FVG'den dönüş — {n_sig} sinyal (bütün coinler, 2 yıl; son dönem = son {DOG['FVG']} gün)\n\n"
+        "Giriş: cizgi = tepki çizgisi (destekte üst, dirençte alt), orta = FVG ortası. Stop: FVG'nin öbür ucu + 0.1 x günlük ATR.\n")
+    oz = [("Long (🟩)", lambda x: x["yon"] == 1), ("Short (🟥)", lambda x: x["yon"] == -1),
+          ("⭐⭐", lambda x: x["score"] == 2), ("⭐⭐⭐", lambda x: x["score"] == 3),
+          ("yakın temas", lambda x: x["yakin"]), ("gerçek temas", lambda x: not x["yakin"])]
+    for gr in ("filtresiz", "EMA filtreli"):
+        bolum(f"FVG — {gr}", fvg_var[gr], t_split, ozellikler=oz, sonuc=sonuc)
+    print(f"FVG bitti ({(time.time() - t0) / 60:.0f} dk)", flush=True)
+
+    # ===================== 3) EMA21 HAFTALIK =====================
+    t_split = now - DOG["EMA"] * DAY
+    ema_var = {}
+    n_sig = 0
+    for inst, H in hazir.items():
+        d, w = H["d"], H["w"]
+        if len(w["c"]) < 30:
+            continue
+        sigs, we = S.ema21w_sinyalleri(w, 0)
+        n_sig += len(sigs)
+        ad_, _ = atr(d["h"], d["l"], d["c"])
+        cd = d["c"]
+        for g in ("fvg", "ema"):
+            for stp in ("mum", "fvg"):
+                for hafta in (2, 4, 8):
+                    for iz in (("yok", 0), ("r1be", 0)):
+                        for tp in TPLER:
+                            def fn(sg, g=g, stp=stp, hafta=hafta, iz=iz, tp=tp):
+                                yon = sg["yon"]
+                                i0 = bisect.bisect_left(d["t"], sg["t"])
+                                if i0 >= len(cd):
+                                    return None
+                                di = i0 - 1
+                                pay = 0.1 * H["datr"][di] if di >= 0 and not np.isnan(H["datr"][di]) else 0
+                                px_son = cd[di]
+                                fvg = None
+                                for z in H["fvg_open"][di] if di >= 0 else []:
+                                    if yon == 1 and z["tur"] == 1 and z["ust"] < px_son and (1 - z["ust"] / px_son) * 100 <= 15:
+                                        if fvg is None or z["ust"] > fvg["ust"]:
+                                            fvg = z
+                                    if yon == -1 and z["tur"] == -1 and z["alt"] > px_son and (z["alt"] / px_son - 1) * 100 <= 15:
+                                        if fvg is None or z["alt"] < fvg["alt"]:
+                                            fvg = z
+                                if stp == "mum":
+                                    st = (sg["l"] if yon == 1 else sg["h"]) - pay * yon
+                                elif fvg is not None:
+                                    st = (fvg["alt"] if yon == 1 else fvg["ust"]) - pay * yon
+                                else:
+                                    return None
+                                if g == "fvg" and fvg is None:
+                                    return None
+                                sg["emir_bitis"] = sg["t"] + hafta * 7 * DAY
+                                bitis = min(len(cd) - 1, i0 + hafta * 7)
+                                for j in range(i0, bitis + 1):
+                                    wk = bisect.bisect_right(w["t"], d["t"][j]) - 1
+                                    if g == "fvg":
+                                        sev = fvg["ust"] if yon == 1 else fvg["alt"]
+                                    else:
+                                        wc = wk - 1 if (wk >= 0 and d["t"][j] < w["t"][wk] + 7 * DAY) else wk
+                                        sev = we[wc] if wc >= sg["i"] and not np.isnan(we[wc]) else sg["e"]
+                                    if (sev - st) * yon <= 0:
+                                        return None
+                                    if (yon == 1 and d["l"][j] <= sev) or (yon == -1 and d["h"][j] >= sev):
+                                        return simulate(d, ad_, j, yon, [(sev, 1.0, st)], st, iz,
+                                                        tp=hedef(tp, sev, st, yon), bekle=1)
+                                    if wk >= 0 and d["t"][j] + DAY == w["t"][wk] + 7 * DAY and not np.isnan(we[wk]):
+                                        if (yon == 1 and w["c"][wk] < we[wk]) or (yon == -1 and w["c"][wk] > we[wk]):
+                                            return None
+                                return None
+                            ad = f"giriş {g} / stop {stp} / {hafta} hafta / {iz[0]} / tp {tp}"
+                            ema_var.setdefault(ad, []).extend(calistir([dict(x) for x in sigs], fn))
+    out(f"\n## 3) EMA21 haftalık — {n_sig} kesişim (bütün coinler, bütün geçmiş; son dönem = son {DOG['EMA']} gün)\n\n"
+        "Giriş: fvg = en yakın günlük FVG sınırı (%15 içinde), ema = EMA21 çizgisi. Stop: mum = kesişim mumunun dibi/tepesi, "
+        "fvg = FVG'nin öbür ucu. İz: yok / r1be = 1R kârdan sonra 1R geriden.\n")
+    bolum("EMA21 haftalık", ema_var, t_split,
+          ozellikler=[("Long", lambda x: x["yon"] == 1), ("Short", lambda x: x["yon"] == -1)], sonuc=sonuc)
+    print(f"EMA bitti ({(time.time() - t0) / 60:.0f} dk)", flush=True)
+
+    # ===================== 4) RSI =====================
+    for tf in ("1D", "1W"):
+        t_split = now - DOG["RSI"] * DAY
+        rsi_var = {}
+        n_a = n_b = 0
+        for inst, H in hazir.items():
+            s = H["d"] if tf == "1D" else H["w"]
+            if len(s["c"]) < 40:
+                continue
+            a, _ = atr(s["h"], s["l"], s["c"])
+            sigs_b, r, g_, lo_ = S.rsi_sinyalleri(s, 0, TF_SEC[tf], 2)
+            # A: dönüş mumunun kapanışında giriş (SMA şartı yok)
+            sigs_a = []
+            c, h, l = s["c"], s["h"], s["l"]
+            for i in range(16, len(c)):
+                if np.isnan(r[i - 1]) or np.isnan(r[i]):
+                    continue
+                yon = tip = None
+                if r[i - 1] < 30 <= r[i]:
+                    yon, tip = 1, "kapanış"
+                elif r[i - 1] > 70 >= r[i]:
+                    yon, tip = -1, "kapanış"
+                else:
+                    ud = S.rsi_if(l[i], c[i - 1], g_[i - 1], lo_[i - 1])
+                    uy = S.rsi_if(h[i], c[i - 1], g_[i - 1], lo_[i - 1])
+                    if r[i - 1] >= 30 and ud <= 30 < r[i]:
+                        yon, tip = 1, "fitil"
+                    elif r[i - 1] <= 70 and uy >= 70 > r[i]:
+                        yon, tip = -1, "fitil"
+                if yon is None:
+                    continue
+                bas = i
+                while bas > max(i - 20, 0) and ((yon == 1 and r[bas - 1] <= 32) or (yon == -1 and r[bas - 1] >= 68)):
+                    bas -= 1
+                uc = np.min(l[bas:i + 1]) if yon == 1 else np.max(h[bas:i + 1])
+                sigs_a.append(dict(i=i, t=s["t"][i] + TF_SEC[tf], yon=yon, tip=tip, uc=uc))
+            n_a += len(sigs_a)
+            n_b += len(sigs_b)
+            for giris, sigs in (("A dönüş", sigs_a), ("B dönüş + SMA kesişimi", sigs_b)):
+                for iz in IZLER:
+                    for tp in TPLER:
+                        def fn(sg, iz=iz, tp=tp, s=s, a=a):
+                            yon, i = sg["yon"], sg["i"]
+                            pay = 0.1 * a[i] if not np.isnan(a[i]) else 0
+                            st = sg["uc"] - pay * yon
+                            px = s["c"][i]
+                            if (px - st) * yon <= 0:
+                                return None
+                            return simulate(s, a, i + 1, yon, [], st, iz, piyasa=px, tp=hedef(tp, px, st, yon),
+                                            max_bar=365 if tf == "1D" else 104)
+                        ad = f"{giris} / {iz[0]} {iz[1] or ''} / tp {tp}".replace("  ", " ")
+                        rsi_var.setdefault(ad, []).extend(calistir([dict(x) for x in sigs], fn))
+        out(f"\n## 4) RSI {tf} — A: {n_a} dönüş, B: {n_b} dönüş + SMA kesişimi (bütün coinler, bütün geçmiş; son dönem = son {DOG['RSI']} gün)\n")
+        bolum(f"RSI {tf}", rsi_var, t_split,
+              ozellikler=[("Long", lambda x: x["yon"] == 1), ("Short", lambda x: x["yon"] == -1),
+                          ("Kapanışla dönüş", lambda x: x["tip"] == "kapanış"), ("Fitille dönüş", lambda x: x["tip"] == "fitil")],
+              sonuc=sonuc)
+        print(f"RSI {tf} bitti ({(time.time() - t0) / 60:.0f} dk)", flush=True)
+
+    out(f"\nToplam süre: {(time.time() - t0) / 60:.0f} dk")
+    with open(OUT_MD, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    with open(OUT_JSON, "w") as f:
+        json.dump(sonuc, f)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        import traceback
+        lines.append("\n## HATA\n\n```\n" + traceback.format_exc() + "```")
+        with open(OUT_MD, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        raise

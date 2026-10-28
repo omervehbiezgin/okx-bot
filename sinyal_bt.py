@@ -272,7 +272,7 @@ def day_index(d, t):
 
 # ======================= SİNYALLER =======================
 KIR_CFG = {"15m": dict(lb=96, base=32, k=3.5, htf="1H"), "1H": dict(lb=72, base=24, k=3.0, htf="4H"),
-           "4H": dict(lb=60, base=20, k=3.0, htf="1D")}
+           "4H": dict(lb=60, base=20, k=3.0, htf="1D"), "1D": dict(lb=40, base=14, k=2.5, htf="1W")}
 
 
 def kirilim_sinyalleri(s, tf, htf_s, htf_sec, d, fvg_open, t_bas):
@@ -346,7 +346,7 @@ def kirilim_sinyalleri(s, tf, htf_s, htf_sec, d, fvg_open, t_bas):
                                               (z["ust"] < cc and (1 - z["ust"] / cc) * 100 <= b.NOTE_NEAR_PCT))
                 uyari = uyari or ters
         out.append(dict(i=L, t=close_time, yon=kind, hi=hi[L], lo=lo[L], stars=stars, rev=rev, iyi=iyi,
-                        uyari=uyari))
+                        uyari=uyari, c=c[L]))
     return out
 
 
@@ -597,7 +597,7 @@ def simulate(s, a, i0, yon, emirler, stop0, iz, tp=None, bekle=None, iptal=None,
     if risk <= 0:
         return None
     return dict(R=(pnl - ucret) / risk, pct=(pnl - ucret) / (ort * wsum) * 100, giris_t=s["t"][ilk_dolum],
-                cikis_t=s["t"][jc], dolan=wsum, acik=jc == son and cikis[0] == c[son])
+                cikis_t=s["t"][jc], dolan=wsum, acik=jc == son and cikis[0] == c[son], risk_pct=risk / (ort * wsum))
 
 
 def calistir(sinyaller, fn):

@@ -12,6 +12,9 @@ on:
       max_coin:
         description: "En fazla kaç coin (0 = hepsi; deneme için küçük sayı)"
         default: "0"
+      betik:
+        description: "Test betiği (sinyal_bt.py = ilk test, sinyal_bt2.py = kullanıcı kurallarıyla ikinci test)"
+        default: "sinyal_bt2.py"
 
 permissions:
   contents: write              # sadece sonuç dalına yazmak için
@@ -35,7 +38,7 @@ jobs:
           key: sinyal-bt-${{ github.run_id }}
           restore-keys: sinyal-bt-
       - run: pip install requests numpy pandas
-      - run: python sinyal_bt.py
+      - run: python ${{ inputs.betik || 'sinyal_bt2.py' }}
         env:
           BT_TOP: ${{ inputs.top || '100' }}
           BT_MAX_COIN: ${{ inputs.max_coin || '0' }}
