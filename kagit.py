@@ -35,6 +35,7 @@ def _st(state):
     k.setdefault("kapanan", [])          # son işlemler (özet için, en fazla 300)
     k.setdefault("sayac", dict(atlanan=0, iptal=0, suresi_dolan=0))
     k.setdefault("baslangic", int(time.time()))
+    k.setdefault("son_ozet", (int(time.time()) - 6 * 3600) // DAY)   # ilk özet bir sonraki 09:00'da
     return k
 
 
@@ -60,16 +61,18 @@ def _ema_izin(inst, t, fiyat, yon):
 
 def _emir_ekle(k, emir):
     if any(e["id"] == emir["id"] for e in k["emirler"]):
-        return
+        return False
     if (emir["giris"] - emir["stop"]) * emir["yon"] <= 0:
-        return
+        return False
     k["emirler"].append(emir)
+    return True
 
 
 def sinyal_ekle(state, kind, name, hits, candle_open, sec):
     """Tarama sonuçlarından sanal emir kurar (mesaj göndermez)."""
     k = _st(state)
     t = candle_open + sec
+    once = len(k["emirler"])
     for h in hits:
         inst = h["inst"]
         try:
@@ -120,6 +123,16 @@ def sinyal_ekle(state, kind, name, hits, candle_open, sec):
                                    iptal=dict(tur="hafta_ema"), son_kontrol=t))
         except Exception as e:
             print(f"Kâğıt: {inst} sinyali eklenemedi: {e}")
+    yeni = k["emirler"][once:]
+    if yeni:                                          # yeni kurulan sanal emirler: tek mesaj
+        sure = {"EMA21": "2 hafta", "FVG": "3 gün", "K4H": "4 gün"}
+        satir = [f"📝 Kâğıt: {len(yeni)} yeni emir kuruldu (fiyat gelirse açılır)"]
+        for e in yeni:
+            satir.append(f"  {STR_AD[e['s']]} {B.link(e['inst'], 'EMA21_1W' if e['s'] == 'EMA21' else '4H')} "
+                         f"{'long' if e['yon'] == 1 else 'short'}  |  giriş {_fmt(e['giris'])}  |  stop {_fmt(e['stop'])}  |  "
+                         f"kâr al {_fmt(e['tp'])}  |  {sure[e['s']]} geçerli")
+        satir.append(f"Bekleyen emir: {len(k['emirler'])}  |  açık işlem: {len(k['acik'])}/{MAX_ACIK}")
+        B.send("\n".join(satir), KANAL)
 
 
 def _r_hesap(p, cikis, ucret_cikis):
