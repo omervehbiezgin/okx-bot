@@ -52,6 +52,7 @@ jobs:
         env:
           BT_TOP: ${{ inputs.top || '100' }}
           BT_MAX_COIN: ${{ inputs.max_coin || '0' }}
+          BT_TEK: "1"
       - name: Test verisini kaydet
         if: always()
         uses: actions/cache/save@v4

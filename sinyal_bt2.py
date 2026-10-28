@@ -64,6 +64,8 @@ def calistir(sinyaller, fn):
         r = fn(sg)
         if r is None:
             mesgul = sg.get("emir_bitis", sg["t"])
+            if "emir_bitis" in sg:                      # dolmayan emir: tek işlem testinde emir süresi boyunca yer tutar
+                sonuc.append(dict(bos=True, t=sg["t"], bitis=sg["emir_bitis"], inst=sg.get("inst"), yon=sg["yon"]))
             continue
         if r["risk_pct"] >= LIKIT:
             mesgul = r["cikis_t"]
@@ -126,6 +128,8 @@ def bakiye_satiri(ad, b):
 
 def bolum(baslik, varyantlar, t_split, gruplar=None, ozellikler=None, sonuc=None):
     """varyantlar: {ad: işlemler}. En iyi 12 ayarı ve en iyisinin bakiye simülasyonunu yazar."""
+    tum_varyant = varyantlar
+    varyantlar = {ad: [x for x in isl if not x.get("bos")] for ad, isl in varyantlar.items()}
     satir = []
     for ad, isl in varyantlar.items():
         egit = [x for x in isl if x["t"] < t_split]
@@ -139,7 +143,7 @@ def bolum(baslik, varyantlar, t_split, gruplar=None, ozellikler=None, sonuc=None
         return None
     en_iyi = satir[0][0]
     isl = varyantlar[en_iyi]
-    SECILEN[baslik] = (isl, satir[0][1], en_iyi)
+    SECILEN[baslik] = (isl, satir[0][1], en_iyi, tum_varyant[en_iyi])
     out(f"\n**{baslik} — en iyi ayar: {en_iyi}**\n")
     out("| Dönem | Alınan işlem | Teminat yetmediği için atlanan | Son bakiye | Kâr / zarar | En büyük düşüş | En düşük bakiye | Aynı anda en çok açık |")
     out("|---|---|---|---|---|---|---|---|")
@@ -152,6 +156,71 @@ def bolum(baslik, varyantlar, t_split, gruplar=None, ozellikler=None, sonuc=None
             parca.append((ad, ozet([x for x in alt if x["t"] < t_split], 0), ozet([x for x in alt if x["t"] >= t_split], 0)))
         tablo(f"{baslik} — en iyi ayar, sinyal özelliklerine göre", parca)
     return en_iyi
+
+
+def tek_sim(kayitlar, max_acik, mod, t_bas=None):
+    """Aynı anda en fazla max_acik işlem.
+    mod 'a': bekleyen emirler serbest, ilk dolan alınır (doluşta yer yoksa atlanır).
+    mod 'b': emir verildiği andan (sinyal) işlem kapanana / emir iptal olana kadar yer tutar; yer yoksa sinyal atlanır."""
+    if t_bas is not None:
+        kayitlar = [x for x in kayitlar if x["t"] >= t_bas]
+    bakiye, acik, alinan, atlanan, tepe, dd, en_dusuk = BAKIYE, [], 0, 0, BAKIYE, 0.0, BAKIYE
+    if mod == "a":
+        olaylar = sorted([x for x in kayitlar if not x.get("bos")], key=lambda x: x["giris_t"])
+        an = lambda x: x["giris_t"]
+    else:
+        olaylar = sorted(kayitlar, key=lambda x: x["t"])
+        an = lambda x: x["t"]
+    for x in olaylar:
+        simdi = an(x)
+        for a in sorted([a for a in acik if a[0] <= simdi]):
+            bakiye += a[2]
+            tepe = max(tepe, bakiye)
+            dd = max(dd, tepe - bakiye)
+            en_dusuk = min(en_dusuk, bakiye)
+        acik = [a for a in acik if a[0] > simdi]
+        if len(acik) >= max_acik or any(a[3] == x.get("inst") for a in acik):
+            if not x.get("bos"):
+                atlanan += 1
+            continue
+        if x.get("bos"):                                  # mod b: dolmayan emir, süresi boyunca yer tutar
+            acik.append((x["bitis"], 0.0, 0.0, x.get("inst")))
+            continue
+        teminat = RISK / x["risk_pct"] / KALDIRAC
+        if teminat > bakiye - sum(a[1] for a in acik):
+            atlanan += 1
+            continue
+        acik.append((x["cikis_t"], teminat, x["R"] * RISK, x.get("inst")))
+        alinan += 1
+    for a in sorted(acik):
+        bakiye += a[2]
+        tepe = max(tepe, bakiye)
+        dd = max(dd, tepe - bakiye)
+        en_dusuk = min(en_dusuk, bakiye)
+    return dict(son=bakiye, alinan=alinan, atlanan=atlanan, dd=dd, en_dusuk=en_dusuk)
+
+
+def tek_islem_bolumu(adaylar, now):
+    t_bas2, t_split2 = now - GUN2 * DAY, now - 180 * DAY
+    out("\n## 6) Aynı anda sınırlı işlem (tek işlem / en fazla 3 işlem)\n\n"
+        "a = bekleyen limit emirler serbest, ilk dolan alınır, yer yoksa dolan emir iptal sayılır. "
+        "b = emir verildiği andan işlem kapanana (ya da emir iptal olana) kadar yer tutar, o sırada gelen sinyaller atlanır. "
+        "Atlanan = yer olmadığı için alınmayan işlem. Hepsi 100 $ ile başlar, işlem başına 1 $ risk.\n")
+    gruplar = [(b_, [x for x in SECILEN[b_][3] if x["t"] >= t_bas2]) for b_ in adaylar if b_ in SECILEN]
+    birlikte = []
+    for b_, k in gruplar:
+        birlikte += k
+    gruplar.append(("HEPSİ BİRLİKTE", birlikte))
+    out("| Strateji | En fazla açık | Emir kuralı | Son 2 yıl: işlem / atlanan | Son 2 yıl bakiye | En büyük düşüş | "
+        "Son 180 gün: işlem | Son 180 gün bakiye |")
+    out("|---|---|---|---|---|---|---|---|")
+    for b_, k in gruplar:
+        for mx in (1, 3):
+            for mod in ("a", "b"):
+                z = tek_sim(k, mx, mod)
+                zs = tek_sim(k, mx, mod, t_split2)
+                out(f"| {b_} | {mx} | {mod} | {z['alinan']} / {z['atlanan']} | {z['son']:.1f} $ | {z['dd']:.1f} $ | "
+                    f"{zs['alinan']} | {zs['son']:.1f} $ |")
 
 
 def main():
@@ -422,7 +491,7 @@ def main():
     # ===================== 5) STRATEJİLER BİRLİKTE, TEK BAKİYE =====================
     adaylar = ["EMA21 haftalık", "FVG — EMA filtreli", "Kırılım 4H — ana 3 yıldız", "Kırılım 4H — ⚠️ notlu",
                "Kırılım 1D — ana", "RSI 1W"]
-    secim = [(b, SECILEN[b]) for b in adaylar
+    secim = [(b, SECILEN[b][:3]) for b in adaylar
              if b in SECILEN and SECILEN[b][1].get("n", 0) >= 30 and SECILEN[b][1].get("ortR", 0) > 0]
     t_bas2, t_split2 = now - GUN2 * DAY, now - 180 * DAY
     out("\n## 5) Stratejiler birlikte — tek 100 $ bakiye (son 2 yıl)\n\n"
@@ -450,6 +519,9 @@ def main():
         alt = [x for x in filtreli if x["strateji"] == b_]
         if alt:
             out(f"| {b_} | {len(alt)} | {np.mean([x['R'] for x in alt]):+.2f} | {sum(x['R'] for x in alt) * RISK:+.1f} $ |")
+
+    if os.getenv("BT_TEK") == "1":
+        tek_islem_bolumu([b_ for b_, _ in secim], now)      # 5. bölümde seçilen stratejiler
 
     out(f"\nToplam süre: {(time.time() - t0) / 60:.0f} dk")
     with open(OUT_MD, "w") as f:
