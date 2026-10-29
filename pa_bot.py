@@ -215,6 +215,9 @@ class Okx:
         return {d["instId"] for d in data if d.get("state", "live") == "live"}
 
     def last_price(self, inst):
+        # Emir verilen hesabın kendi fiyatı (demo hesapta fiyatlar gerçek piyasadan sapabiliyor)
+        if self.has_keys:
+            return float(self.req("GET", "/api/v5/market/ticker", {"instId": inst})[0]["last"])
         return float(p.api("/api/v5/market/ticker", {"instId": inst})[0]["last"])
 
     # --- hesap ---
