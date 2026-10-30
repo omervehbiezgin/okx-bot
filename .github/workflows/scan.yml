@@ -11,7 +11,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write                # sadece kâğıt işlem durumunu 'kagit-durum' dalına yazmak için
   actions: write                 # Bir sonraki turu kendisi başlatabilmesi için
 
 concurrency:
@@ -46,6 +46,7 @@ jobs:
           TG_TOKEN_EMA: ${{ secrets.TG_TOKEN_EMA }}
           TG_TOKEN_RSI: ${{ secrets.TG_TOKEN_RSI }}
           TEST_RUN: ${{ inputs.test }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           BASLA=$(date +%s)
           SURE=19800      # 5 saat 30 dk: bu süreden sonra yeni tarama BAŞLATILMAZ.
@@ -53,6 +54,13 @@ jobs:
                           # (GitHub sınırı 6 saat, iş zaman aşımı 358 dk).
           while true; do
             python okx_scan_once.py || echo "Tarama hatayla bitti, döngü devam ediyor."
+            if [ -f kagit_durum.json ]; then   # kâğıt işlem anlık durumu (okunabilsin diye ayrı dala)
+              ( K=$(mktemp -d) && cp kagit_durum.json "$K"/ && cd "$K" && git init -q -b kagit-durum \
+                && git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add . \
+                && git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Kâğıt durum" \
+                && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" HEAD:kagit-durum ) \
+                || echo "Kâğıt durumu gönderilemedi."
+            fi
             export TEST_RUN=false          # Test mesajı sadece ilk turda gitsin
             SIMDI=$(date +%s)
             BEKLE=$(( 900 - SIMDI % 900 + 20 ))   # Bir sonraki 15 dk mum kapanışı + 20 sn

@@ -15,6 +15,7 @@ Kurallar: fiyat emre gelince ilk gelen alınır (en fazla 3 açık, coin başın
 atlanır. Giriş gerçekte piyasa emriyle yapılacağı için giriş ücreti %0.05 + %0.03 kayma; stop %0.05 + %0.03 kayma,
 kâr al %0.02. Fonlama ücreti OKX'in gerçekleşen oranlarıyla düşülür. Mesajlar EMA botuna, başında 📝 ile gider.
 """
+import json
 import time
 
 B = None                      # okx_scan_once modülü (okx_scan_once tarafından atanır)
@@ -36,6 +37,7 @@ def _st(state):
     k.setdefault("sayac", dict(atlanan=0, iptal=0, suresi_dolan=0))
     k.setdefault("baslangic", int(time.time()))
     k.setdefault("son_ozet", (int(time.time()) - 6 * 3600) // DAY)   # ilk özet bir sonraki 09:00'da
+    k.setdefault("son_ozet2", (int(time.time()) - 6 * 3600) // (DAY // 2))
     return k
 
 
@@ -305,19 +307,64 @@ def bakim(state):
                 print(f"Kâğıt: {p['inst']} fonlama alınamadı: {ex}")
             p["fon_t"] = son_fon
 
-    # günlük özet: 06:00 UTC (09:00 TR) sonrası ilk çalışma
-    gun = (now - 6 * 3600) // DAY
-    if k.get("son_ozet") != gun and now % DAY >= 6 * 3600:
-        k["son_ozet"] = gun
-        ozet(k)
+    # özet: günde iki kez, 06:00 ve 18:00 UTC (09:00 ve 21:00 TR) sonrası ilk çalışma
+    yarim = (now - 6 * 3600) // (DAY // 2)
+    fiyat = {}
+    try:
+        if k["acik"]:
+            fiyat = _fiyatlar()
+    except Exception as ex:
+        print("Kâğıt: fiyatlar alınamadı:", ex)
+    if k.get("son_ozet2") != yarim:
+        k["son_ozet2"] = yarim
+        ozet(k, fiyat)
+    durum_yaz(k, fiyat)
 
 
-def ozet(k):
+def _acik_satirlari(k, fiyat):
+    satir, toplam = [], 0.0
+    for p in k["acik"]:
+        px = fiyat.get(p["inst"])
+        ek = ""
+        if px:
+            anlik = _r_hesap(p, px, UCRET_STOP)
+            toplam += anlik
+            ek = f", şu an {_fmt(px)} → {anlik:+.2f} $"
+        sure = (time.time() - p["giris_t"]) / 3600
+        satir.append(f"  {STR_AD[p['s']]} {B.short(p['inst'])} {'long' if p['yon'] == 1 else 'short'}: giriş {_fmt(p['giris_px'])}, "
+                     f"stop {_fmt(p['stop'])}, kâr al {_fmt(p['tp'])}{ek} ({sure:.0f} saattir açık)")
+    return satir, toplam
+
+
+def durum_yaz(k, fiyat):
+    """Anlık durumu kagit_durum.json'a yazar (tarama döngüsü bunu 'kagit-durum' dalına gönderir)."""
+    try:
+        acik = []
+        for p in k["acik"]:
+            px = fiyat.get(p["inst"])
+            acik.append(dict(strateji=p["s"], coin=B.short(p["inst"]), yon="long" if p["yon"] == 1 else "short",
+                             giris=p["giris_px"], stop=p["stop"], kar_al=p["tp"], anlik_fiyat=px,
+                             anlik_sonuc=round(_r_hesap(p, px, UCRET_STOP), 3) if px else None,
+                             teminat=round(p["teminat"], 2), acilis=time.strftime("%Y-%m-%d %H:%M", time.gmtime(p["giris_t"] + 10800))))
+        bekleyen = [dict(strateji=e["s"], coin=B.short(e["inst"]), yon="long" if e["yon"] == 1 else "short",
+                         giris=e["giris"], stop=e["stop"], kar_al=e["tp"],
+                         bitis=time.strftime("%Y-%m-%d %H:%M", time.gmtime(e["bitis"] + 10800))) for e in k["emirler"]]
+        son = [dict(x, cikis=time.strftime("%Y-%m-%d %H:%M", time.gmtime(x["cikis_t"] + 10800))) for x in k["kapanan"][-20:]]
+        with open("kagit_durum.json", "w") as f:
+            json.dump(dict(zaman_tr=time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + 10800)),
+                           bakiye=round(k["bakiye"], 2), acik=acik, bekleyen=bekleyen, son_kapananlar=son,
+                           sayac=k["sayac"], toplam_islem=len(k["kapanan"])), f, ensure_ascii=False, indent=1)
+    except Exception as ex:
+        print("Kâğıt: durum yazılamadı:", ex)
+
+
+def ozet(k, fiyat=None):
+    fiyat = fiyat or {}
     now = time.time()
     son24 = [x for x in k["kapanan"] if x["cikis_t"] >= now - DAY]
     tum = k["kapanan"]
     gun = max((now - k["baslangic"]) / DAY, 0.01)
-    satir = [f"📝 Kâğıt işlem — günlük özet ({gun:.0f}. gün)",
+    satir = [f"📝 Kâğıt işlem — özet ({gun:.0f}. gün, {'sabah' if time.gmtime(now).tm_hour < 18 else 'akşam'})",
              f"Sanal bakiye: {k['bakiye']:.2f} $ (başlangıç {BAKIYE0:.0f} $, {k['bakiye'] - BAKIYE0:+.2f} $)",
              f"Son 24 saat: {len(son24)} işlem kapandı, {sum(x['sonuc'] for x in son24):+.2f} $",
              f"Toplam: {len(tum)} işlem, kazanan %{(sum(x['sonuc'] > 0 for x in tum) / len(tum) * 100) if tum else 0:.0f}"]
@@ -325,10 +372,9 @@ def ozet(k):
         v = [x for x in tum if x["s"] == s]
         if v:
             satir.append(f"  {STR_AD[s]}: {len(v)} işlem, {sum(x['sonuc'] for x in v):+.2f} $")
-    satir.append(f"Açık işlem: {len(k['acik'])}/{MAX_ACIK}")
-    for p in k["acik"]:
-        satir.append(f"  {STR_AD[p['s']]} {B.short(p['inst'])} {'long' if p['yon'] == 1 else 'short'} giriş {_fmt(p['giris_px'])}, "
-                     f"stop {_fmt(p['stop'])}, kâr al {_fmt(p['tp'])}")
+    acik_s, anlik = _acik_satirlari(k, fiyat)
+    satir.append(f"Açık işlem: {len(k['acik'])}/{MAX_ACIK}" + (f" (şu an toplam {anlik:+.2f} $)" if k["acik"] and fiyat else ""))
+    satir += acik_s
     bek = {}
     for e in k["emirler"]:
         bek[e["s"]] = bek.get(e["s"], 0) + 1
