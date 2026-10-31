@@ -1,16 +1,17 @@
 Mod: daily · anahtar: yok · canlı: True · demo: True
-Hesap bağlamı değişti (anahtar-demo → kuru-demo): durum sıfırlandı
-🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 28.10.2026 günlük mumu
-💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-Taranan: ETH BTC ZEC SOL PEPE XRP DOGE NEAR HYPE INIT PUMP WLD SUI UNI BCH ENA APR DOS BNB FIL PONS CAP AKE ADA BEAT BTW LINK DOOD TRUMP ARB LTC BLUR LIT AAVE ONDO STRK IRYS AXIS TAO XPL AVAX DGAI DOT PENGU INJ TIA ETHW CHIP CT USELESS GRASS OKB XLM VVV SHIB APT OP DASH HUMA CRV TRX HBAR LAB ZRO BICO OL BAT SAND ZAMA ETC QUANT KAT ICP ORDER ASTER WLFI ETHFI RAY STX CASHCAT
-🔎 80 coin tarandı, 1 sinyal. Açık/bekleyen: 0/8
-📝 [KAĞIT] 🟢 LONG BNB · seviye 751.7 kırıldı · giriş 752.83 · stop 742.51 (%1.37) · 9 kontrat ≈ 67.75 USDT · 10x → teminat 6.78 USDT · risk 0.93 USDT
-📊 [KAĞIT] sanal bakiye 100.00 USDT · açık: BNB L (stop 742.51) · kapanan işlem: 0
-🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 28.10.2026 günlük mumu
-💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-🔎 80 coin tarandı, 1 sinyal. Açık/bekleyen: 0/8
-📝 [KAĞIT] 🟢 LONG BNB · seviye 751.7 kırıldı · giriş 752.83 · stop 742.51 (%1.37) · 9 kontrat ≈ 67.75 USDT · 10x → teminat 6.78 USDT · risk 0.93 USDT
-📊 [KAĞIT] sanal bakiye 100.00 USDT · açık: BNB L (stop 742.51) · kapanan işlem: 0
+🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 30.10.2026 günlük mumu
+📕 [KAĞIT] BNB LONG kapandı (stop 742.51): -1.00 USDT (-1.0R) · sanal bakiye 99.00
+💰 Bakiye: 99.00 USDT (başlangıç 100.00)
+Taranan: BTC ETH ZEC SOL PEPE HYPE XRP NEAR DOGE UNI WLD PUMP ENA BNB PARTI TRX SUI BCH AKE OP LINK SOPH XDP FIL TRUMP LIT AAVE WET ADA ONDO AVAX ARB DOOD XPL LTC BLUR BTW CAP APR BEAT TAO XLM STRK PONS ZRO SPK OKB INIT TIA PENGU CRV ZAMA SHIB IRYS CT DOT INJ USELESS SAND APT ASTER DGAI HBAR RSR GRASS DASH POL AXIS ICP PENDLE EDGE WLFI ETHFI ETC RE DOS VVV PYTH
+🔎 78 coin tarandı, 0 sinyal. Açık/bekleyen: 0/8
+Bugün sinyal yok.
+📊 [KAĞIT] sanal bakiye 99.00 USDT · açık: yok · kapanan işlem: 1 (toplam -1.00 USDT)
+🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 30.10.2026 günlük mumu
+📕 [KAĞIT] BNB LONG kapandı (stop 742.51): -1.00 USDT (-1.0R) · sanal bakiye 99.00
+💰 Bakiye: 99.00 USDT (başlangıç 100.00)
+🔎 78 coin tarandı, 0 sinyal. Açık/bekleyen: 0/8
+Bugün sinyal yok.
+📊 [KAĞIT] sanal bakiye 99.00 USDT · açık: yok · kapanan işlem: 1 (toplam -1.00 USDT)
 ℹ️ Otomatik işlem botu, yatırım tavsiyesi değildir.
 
 UYARI: TG_TOKEN veya TG_CHAT_ID tanımlı değil, Telegram'a mesaj gönderilmedi!
