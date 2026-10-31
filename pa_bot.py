@@ -56,6 +56,7 @@ MAX_HOLD_DAYS = 60
 MIN_SP, MAX_SP = 0.5, 15.0  # stop mesafesi % sınırları
 ENTRY_SLIP = 0.001          # limit fiyatı: son fiyattan %0,1 aleyhe (hemen dolması için)
 REDUCE_SLIP = 0.005         # fazla pozisyon azaltırken kabul edilen en fazla kayma
+LIQ_BUFFER = 1.5            # tasfiye fiyatı, fiyata stopun en az bu katı uzakta tutulur (gerekirse teminat eklenir)
 FILL_WAIT = 600             # sabah verilen giriş emirleri bu kadar saniye beklenir, dolmayan iptal
 ENTRY_TIMEOUT = 3600        # dolmayan giriş emri bu kadar saniye sonra iptal
 MAX_NOTIONAL_X = 2.0        # tek pozisyon büyüklüğü en fazla bakiyenin bu katı
@@ -243,8 +244,13 @@ class Okx:
             d = (1 if pos > 0 else -1) if side == "net" else (1 if side == "long" else -1)
             out.append(dict(inst=x["instId"], dir=d, sz=abs(pos), avg=float(x.get("avgPx") or 0),
                             ctime=int(x.get("cTime") or 0) // 1000, posSide=side, upl=float(x.get("upl") or 0),
-                            mgnMode=x.get("mgnMode")))
+                            mgnMode=x.get("mgnMode"), liq=float(x.get("liqPx") or 0),
+                            margin=float(x.get("margin") or 0), notional=float(x.get("notionalUsd") or 0)))
         return out
+
+    def add_margin(self, inst, side, amt):
+        body = {"instId": inst, "posSide": side or "net", "type": "add", "amt": num(round(amt, 2))}
+        return self.req("POST", "/api/v5/account/position/margin-balance", body=body)
 
     def pending_orders(self):
         return self.req("GET", "/api/v5/trade/orders-pending", {"instType": "SWAP"})
@@ -701,6 +707,45 @@ def hourly(ok, st, now):
                     changed = True
                 except OkxError as ex:
                     note(f"❌ {short(inst)}: büyük pozisyon azaltılamadı ({ex}) — lütfen elle kontrol edin")
+    # tasfiye güvenliği: izole marjinde fonlama ücretleri teminatı eritir ve tasfiye fiyatı yaklaşır. Tasfiye fiyatı
+    # mevcut fiyata stopun 1,5 katından daha yakınsa (ya da stopun berisindeyse) teminat eklenir; böylece önce stop çalışır.
+    for inst, ps in cur.items():
+        if ps.get("mgnMode") != "isolated" or not ps.get("liq") or not ps.get("notional") or not LIVE:
+            continue
+        d = ps["dir"]
+        mine = [float(x["slTriggerPx"]) for x in stops if x["instId"] == inst]
+        e = st.get("entries", {}).get(inst) or {}
+        stop = (max(mine) if d == 1 else min(mine)) if mine else e.get("stop")
+        if not stop:
+            continue
+        try:
+            last = ok.last_price(inst)
+        except Exception as ex:
+            log(f"{inst} fiyat alınamadı: {ex}")
+            continue
+        sd = (last - stop) * d                       # fiyatın stopa uzaklığı (pozitif olmalı)
+        ld = (last - ps["liq"]) * d                  # fiyatın tasfiye fiyatına uzaklığı
+        if sd <= 0 or ld >= LIQ_BUFFER * sd:
+            continue
+        need_pct = LIQ_BUFFER * sd / last + 0.005    # pozisyon değerine göre gereken teminat oranı (+ bakım payı)
+        amt = ps["notional"] * need_pct - ps["margin"]
+        if amt <= 0.5:
+            amt = 0.5
+        try:
+            _, avail = ok.balance()
+            if CAPITAL > 0:
+                _, avail = virtual_balance(st, *ok.balance())
+            amt = min(amt, max(0.0, avail * 0.5))
+            if amt < 0.5:
+                note(f"⚠️ {short(inst)}: tasfiye fiyatı ({fp(ps['liq'])}) stopa ({fp(stop)}) çok yakın ama eklenecek "
+                     f"boş bakiye yok — lütfen kontrol edin")
+                continue
+            ok.add_margin(inst, ps.get("posSide"), amt)
+            note(f"🛟 {short(inst)}: tasfiye fiyatı stopa yaklaşmıştı (fiyat {fp(last)}, stop {fp(stop)}, tasfiye "
+                 f"{fp(ps['liq'])}; büyük ihtimalle fonlama ücretleri teminatı eritti). {amt:.2f} USDT teminat eklendi.")
+            changed = True
+        except OkxError as ex:
+            note(f"❌ {short(inst)}: teminat eklenemedi ({ex}) — tasfiye riski, lütfen kontrol edin")
     # stopsuz pozisyon kontrolü
     for inst, ps in cur.items():
         if not any(x["instId"] == inst for x in stops):
