@@ -1,0 +1,218 @@
+{
+ "zaman_tr": "2026-11-07 16:15",
+ "bakiye": 102.32,
+ "acik": [
+  {
+   "strateji": "K4H",
+   "coin": "ALGO",
+   "yon": "short",
+   "giris": 0.1035939125,
+   "stop": 0.107267,
+   "kar_al": 0.07791353383458646,
+   "anlik_fiyat": 0.09418,
+   "anlik_sonuc": 2.473,
+   "teminat": 9.4,
+   "acilis": "2026-10-29 19:15"
+  },
+  {
+   "strateji": "FVG",
+   "coin": "UP",
+   "yon": "short",
+   "giris": 0.11646505,
+   "stop": 0.12529214285714285,
+   "kar_al": 0.09891571428571427,
+   "anlik_fiyat": 0.1119,
+   "anlik_sonuc": 0.505,
+   "teminat": 4.4,
+   "acilis": "2026-11-07 05:57"
+  }
+ ],
+ "bekleyen": [
+  {
+   "strateji": "EMA21",
+   "coin": "ETH",
+   "yon": "short",
+   "giris": 2586.0,
+   "stop": 2690.5401428571427,
+   "kar_al": 2350.9090909090905,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "SOL",
+   "yon": "short",
+   "giris": 98.5,
+   "stop": 100.77778571428571,
+   "kar_al": 89.54545454545453,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "AVAX",
+   "yon": "short",
+   "giris": 9.347,
+   "stop": 9.613814285714286,
+   "kar_al": 8.497272727272726,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "LTC",
+   "yon": "short",
+   "giris": 59.81,
+   "stop": 61.2335,
+   "kar_al": 54.37272727272727,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "CRV",
+   "yon": "short",
+   "giris": 0.2911,
+   "stop": 0.3025528571428571,
+   "kar_al": 0.2646363636363636,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "CHIP",
+   "yon": "short",
+   "giris": 0.04504,
+   "stop": 0.048437214285714285,
+   "kar_al": 0.04094545454545454,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "K4H",
+   "coin": "BILL",
+   "yon": "short",
+   "giris": 0.0052585,
+   "stop": 0.0056383,
+   "kar_al": 0.003953759398496241,
+   "bitis": "2026-11-08 23:00"
+  },
+  {
+   "strateji": "K4H",
+   "coin": "WLD",
+   "yon": "short",
+   "giris": 0.38155,
+   "stop": 0.40585,
+   "kar_al": 0.2868796992481203,
+   "bitis": "2026-11-09 19:00"
+  },
+  {
+   "strateji": "K4H",
+   "coin": "BILL",
+   "yon": "short",
+   "giris": 0.005082,
+   "stop": 0.0055476,
+   "kar_al": 0.003821052631578947,
+   "bitis": "2026-11-09 19:00"
+  },
+  {
+   "strateji": "K4H",
+   "coin": "SYRUP",
+   "yon": "short",
+   "giris": 0.15755000000000002,
+   "stop": 0.16529,
+   "kar_al": 0.11845864661654136,
+   "bitis": "2026-11-09 19:00"
+  },
+  {
+   "strateji": "K4H",
+   "coin": "ORDER",
+   "yon": "short",
+   "giris": 0.035385,
+   "stop": 0.037707,
+   "kar_al": 0.026605263157894736,
+   "bitis": "2026-11-09 19:00"
+  },
+  {
+   "strateji": "K4H",
+   "coin": "SENT",
+   "yon": "short",
+   "giris": 0.019145,
+   "stop": 0.020315,
+   "kar_al": 0.014394736842105262,
+   "bitis": "2026-11-09 19:00"
+  }
+ ],
+ "son_kapananlar": [
+  {
+   "s": "K4H",
+   "inst": "MERL-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.037659418668837,
+   "neden": "stop",
+   "giris_t": 1793271633,
+   "cikis_t": 1793277029,
+   "cikis": "2026-10-29 15:30"
+  },
+  {
+   "s": "FVG",
+   "inst": "BICO-USDT-SWAP",
+   "yon": -1,
+   "sonuc": 1.9217931831063693,
+   "neden": "kâr al",
+   "giris_t": 1793288728,
+   "cikis_t": 1793293927,
+   "cikis": "2026-10-29 20:12"
+  },
+  {
+   "s": "FVG",
+   "inst": "S-USDT-SWAP",
+   "yon": 1,
+   "sonuc": -1.0601523864690152,
+   "neden": "stop",
+   "giris_t": 1793349822,
+   "cikis_t": 1793386849,
+   "cikis": "2026-10-30 22:00"
+  },
+  {
+   "s": "K4H",
+   "inst": "AAVE-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.038036237241233,
+   "neden": "stop",
+   "giris_t": 1793446674,
+   "cikis_t": 1793509257,
+   "cikis": "2026-11-01 08:00"
+  },
+  {
+   "s": "FVG",
+   "inst": "YFI-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.0439636083269084,
+   "neden": "stop",
+   "giris_t": 1793512601,
+   "cikis_t": 1793517713,
+   "cikis": "2026-11-01 10:21"
+  },
+  {
+   "s": "FVG",
+   "inst": "GIGGLE-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.0300632884648127,
+   "neden": "stop",
+   "giris_t": 1793522868,
+   "cikis_t": 1793870080,
+   "cikis": "2026-11-05 12:14"
+  },
+  {
+   "s": "K4H",
+   "inst": "JTO-USDT-SWAP",
+   "yon": -1,
+   "sonuc": 5.603766989317165,
+   "neden": "kâr al",
+   "giris_t": 1793289500,
+   "cikis_t": 1793893965,
+   "cikis": "2026-11-05 18:52"
+  }
+ ],
+ "sayac": {
+  "atlanan": 18,
+  "iptal": 0,
+  "suresi_dolan": 42
+ },
+ "toplam_islem": 7
+}
