@@ -62,6 +62,14 @@ Eğitimde en iyi öncelik: **kırılım hacmi oranı**. Rastgele sıranın eğit
 |---|---|---|---|---|---|
 | 24s hacim · 8×%1 · yön sınırı yok | 1.61 | 254 | +62% / +57% | %40 | 481 / 935 |
 
+## 5) Sağlamlık kontrolü: yön sınırı, 30 rastgele sinyal sırasında (8 yer × %1)
+| Yön sınırı | Ortalama son bakiye | Ortalama en büyük düşüş | Ortalama eğitim / doğrulama getiri | Sınırsıza göre düşüşü azalttığı deneme |
+|---|---|---|---|---|
+| yok | 252 | %46 | +61% / +56% | - |
+| 6 | 266 | %46 | +70% / +56% | 15/30 |
+| 5 | 253 | %42 | +57% / +60% | 24/30 |
+| 4 | 239 | %35 | +54% / +55% | 30/30 |
+
 Not: Fonlama oranına göre filtre test edilemedi; OKX 2 yıllık fonlama geçmişi vermiyor (yaklaşık 3 ay). Testte longlara sabit fonlama maliyeti eklenmişti.
 
-Süre: 16 dk
+Süre: 0 dk
