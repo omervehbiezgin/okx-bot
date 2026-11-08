@@ -1,19 +1,18 @@
 Mod: daily · anahtar: yok · canlı: True · demo: True
-Hesap bağlamı değişti (anahtar-demo → kuru-demo): durum sıfırlandı
 🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 07.11.2026 günlük mumu
 💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-Taranan: BTC ETH ZEC SOL AKE XRP ONE PEPE PUMP HYPE LIT DOGE NEAR BCH UNI TRUMP CAP WLD ACT CT ENA AAVE ARB MET SUI FIL LINK SIGN INJ DGAI PONS STRK OKB ADA BNB XPL LTC BTW ONDO PIEVERSE HMSTR AVAX APR TAO BEAT USELESS STX PENGU MEGA DASH TIA DOT HUMA WLFI BLEND
-🔎 55 coin tarandı, 3 sinyal. Açık/bekleyen: 0/8
-📝 [KAĞIT] 🔴 SHORT PUMP · seviye 0.003761 kırıldı · giriş 0.003642 · stop 0.003963 (%8.81) · 3 kontrat ≈ 10.93 USDT · 7x → teminat 1.56 USDT · risk 0.96 USDT
-📝 [KAĞIT] 🔴 SHORT BCH · seviye 263.03 kırıldı · giriş 244.96 · stop 272.03 (%11.05) · 0.3 kontrat ≈ 7.35 USDT · 5x → teminat 1.47 USDT · risk 0.81 USDT
-📝 [KAĞIT] 🟢 LONG MET · seviye 0.3236 kırıldı · giriş 0.3128 · stop 0.311 (%0.58) · 555 kontrat ≈ 173.60 USDT · 10x → teminat 17.36 USDT · risk 1.00 USDT
+Taranan: BTC ETH ZEC SOL AKE XRP ONE PEPE PUMP HYPE LIT DOGE NEAR BCH UNI TRUMP CAP WLD ACT CT ENA AAVE ARB MET SUI FIL LINK SIGN INJ DGAI PONS STRK OKB ADA BNB XPL LTC BTW ONDO HMSTR PIEVERSE AVAX APR TAO BEAT USELESS STX PENGU MEGA DASH TIA DOT HUMA WLFI BLEND
+🔎 55 coin tarandı, 3 sinyal. Açık/bekleyen: 3/8
+• 🔴 SHORT PUMP: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT BCH: zaten pozisyon/emir var, atlandı
+• 🟢 LONG MET: zaten pozisyon/emir var, atlandı
 📊 [KAĞIT] sanal bakiye 100.00 USDT · açık: PUMP S (stop 0.003963), BCH S (stop 272.03), MET L (stop 0.311) · kapanan işlem: 0
 🌅 Trend botu — günlük çalışma (KAĞIT İŞLEM (gerçek piyasa, emir yok)) · 07.11.2026 günlük mumu
 💰 Bakiye: 100.00 USDT (başlangıç 100.00)
-🔎 55 coin tarandı, 3 sinyal. Açık/bekleyen: 0/8
-📝 [KAĞIT] 🔴 SHORT PUMP · seviye 0.003761 kırıldı · giriş 0.003642 · stop 0.003963 (%8.81) · 3 kontrat ≈ 10.93 USDT · 7x → teminat 1.56 USDT · risk 0.96 USDT
-📝 [KAĞIT] 🔴 SHORT BCH · seviye 263.03 kırıldı · giriş 244.96 · stop 272.03 (%11.05) · 0.3 kontrat ≈ 7.35 USDT · 5x → teminat 1.47 USDT · risk 0.81 USDT
-📝 [KAĞIT] 🟢 LONG MET · seviye 0.3236 kırıldı · giriş 0.3128 · stop 0.311 (%0.58) · 555 kontrat ≈ 173.60 USDT · 10x → teminat 17.36 USDT · risk 1.00 USDT
+🔎 55 coin tarandı, 3 sinyal. Açık/bekleyen: 3/8
+• 🔴 SHORT PUMP: zaten pozisyon/emir var, atlandı
+• 🔴 SHORT BCH: zaten pozisyon/emir var, atlandı
+• 🟢 LONG MET: zaten pozisyon/emir var, atlandı
 📊 [KAĞIT] sanal bakiye 100.00 USDT · açık: PUMP S (stop 0.003963), BCH S (stop 272.03), MET L (stop 0.311) · kapanan işlem: 0
 ℹ️ Otomatik işlem botu, yatırım tavsiyesi değildir.
 
