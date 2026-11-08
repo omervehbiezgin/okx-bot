@@ -201,6 +201,19 @@ def main():
     out(HEAD)
     row("24s hacim · 8×%1 · yön sınırı yok", risk=1.0, maxn=8, key=KEYS["24s hacim (bugünkü bot)"])
     out()
+    # 5) Sağlamlık: sonuç hangi sinyalin yer bulduğuna çok duyarlı; yön sınırının etkisini 30 rastgele sırada ölç
+    out("## 5) Sağlamlık kontrolü: yön sınırı, 30 rastgele sinyal sırasında (8 yer × %1)")
+    out("| Yön sınırı | Ortalama son bakiye | Ortalama en büyük düşüş | Ortalama eğitim / doğrulama getiri | "
+        "Sınırsıza göre düşüşü azalttığı deneme |")
+    out("|---|---|---|---|---|")
+    ref = [run(rs, t0, t_split, 1.0, 8, None, rnd=random.Random(100 + i)) for i in range(30)]
+    for cap in (None, 6, 5, 4):
+        xs = [run(rs, t0, t_split, 1.0, 8, None, dir_cap=cap, rnd=random.Random(100 + i)) for i in range(30)]
+        better = sum(1 for a, b in zip(xs, ref) if a["mdd"] < b["mdd"] - 0.5)
+        out(f"| {'yok' if cap is None else cap} | {np.mean([x['son'] for x in xs]):.0f} | "
+            f"%{np.mean([x['mdd'] for x in xs]):.0f} | {np.mean([x['egit'] for x in xs]):+.0f}% / "
+            f"{np.mean([x['dogr'] for x in xs]):+.0f}% | {'-' if cap is None else f'{better}/30'} |")
+    out()
     out("Not: Fonlama oranına göre filtre test edilemedi; OKX 2 yıllık fonlama geçmişi vermiyor (yaklaşık 3 ay). "
         "Testte longlara sabit fonlama maliyeti eklenmişti.")
     out(f"\nSüre: {(time.time() - T0) / 60:.0f} dk")
