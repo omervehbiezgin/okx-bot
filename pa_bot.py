@@ -728,7 +728,8 @@ def hourly(ok, st, now):
         if sd <= 0 or ld >= LIQ_BUFFER * sd:
             continue
         need_pct = LIQ_BUFFER * sd / last + 0.005    # pozisyon değerine göre gereken teminat oranı (+ bakım payı)
-        amt = ps["notional"] * need_pct - ps["margin"]
+        # tasfiye fiyatını belirleyen etkin teminat = yatırılan teminat + gerçekleşmemiş kâr/zarar
+        amt = ps["notional"] * need_pct - (ps["margin"] + ps.get("upl", 0.0))
         if amt <= 0.5:
             amt = 0.5
         try:
