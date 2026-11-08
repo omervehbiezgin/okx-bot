@@ -41,6 +41,9 @@ import pa_scan_once as p
 # ---------------- AYARLAR ----------------
 RISK = float(os.getenv("PA_RISK") or 1.0)          # işlem başı risk, bakiyenin yüzdesi
 MAX_POS = int(os.getenv("PA_MAX_POS") or 8)
+# Aynı yönde (long ya da short) en fazla bu kadar pozisyon/bekleyen emir. 2 yıllık testte 30 rastgele sırada en büyük
+# düşüşü ortalama %46'dan %35'e indirdi (30/30), getiri biraz düştü. 0 = sınır yok.
+DIR_CAP = int(os.getenv("PA_DIR_CAP") or 4)
 LIVE = os.getenv("PA_LIVE", "") == "1"
 DEMO = os.getenv("PA_DEMO", "") == "1"
 DRY_BALANCE = float(os.getenv("PA_DRY_BALANCE") or 100)
@@ -517,6 +520,12 @@ def daily(ok, st, now):
     # 4) Yeni sinyaller
     held = {x["inst"] for x in open_list} | {o["instId"] for o in pend}
     slots = MAX_POS - len(held)
+    yon_say = {1: 0, -1: 0}
+    for x in open_list:
+        yon_say[x["dir"]] += 1
+    for o in pend:
+        if o["instId"] not in {x["inst"] for x in open_list}:
+            yon_say[1 if o.get("side") == "buy" else -1] += 1
     syms = universe(ok)
     found = []
     for inst in syms:
@@ -546,6 +555,9 @@ def daily(ok, st, now):
             continue
         if acilan >= slots:
             note(f"• {yon} {short(inst)}: yer yok ({MAX_POS} pozisyon dolu), atlandı")
+            continue
+        if DIR_CAP and yon_say[d] >= DIR_CAP:
+            note(f"• {yon} {short(inst)}: aynı yönde en fazla {DIR_CAP} pozisyon kuralı, atlandı")
             continue
         info = inst_info.get(inst)
         if not info:
@@ -612,6 +624,7 @@ def daily(ok, st, now):
             note("📝 [KAĞIT] " + line)
         used_margin += margin
         acilan += 1
+        yon_say[d] += 1
         held.add(inst)
     if ok.has_keys and LIVE:
         wait_fills(ok, st, now)
