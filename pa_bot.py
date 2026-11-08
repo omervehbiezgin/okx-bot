@@ -56,7 +56,7 @@ MAX_HOLD_DAYS = 60
 MIN_SP, MAX_SP = 0.5, 15.0  # stop mesafesi % sınırları
 ENTRY_SLIP = 0.001          # limit fiyatı: son fiyattan %0,1 aleyhe (hemen dolması için)
 REDUCE_SLIP = 0.005         # fazla pozisyon azaltırken kabul edilen en fazla kayma
-LIQ_BUFFER = 1.5            # tasfiye fiyatı, fiyata stopun en az bu katı uzakta tutulur (gerekirse teminat eklenir)
+LIQ_BUFFER = 1.5            # teminat eklenirken tasfiye fiyatı fiyata stopun bu katı uzaklığa çekilir
 FILL_WAIT = 600             # sabah verilen giriş emirleri bu kadar saniye beklenir, dolmayan iptal
 ENTRY_TIMEOUT = 3600        # dolmayan giriş emri bu kadar saniye sonra iptal
 MAX_NOTIONAL_X = 2.0        # tek pozisyon büyüklüğü en fazla bakiyenin bu katı
@@ -247,6 +247,11 @@ class Okx:
                             mgnMode=x.get("mgnMode"), liq=float(x.get("liqPx") or 0),
                             margin=float(x.get("margin") or 0), notional=float(x.get("notionalUsd") or 0)))
         return out
+
+    def price_limit(self, inst):
+        """OKX'in o an kabul ettiği en yüksek alış / en düşük satış fiyatı."""
+        x = self.req("GET", "/api/v5/public/price-limit", {"instId": inst})[0]
+        return float(x["buyLmt"]), float(x["sellLmt"])
 
     def add_margin(self, inst, side, amt):
         body = {"instId": inst, "posSide": side or "net", "type": "add", "amt": num(round(amt, 2))}
@@ -549,6 +554,12 @@ def daily(ok, st, now):
         ctval = float(info["ctVal"])
         last = ok.last_price(inst)
         px = round_step(last * (1 + d * ENTRY_SLIP), tick, up=(d == 1))
+        if ok.has_keys:
+            try:                                   # emir fiyatı OKX'in izin verdiği aralığın içinde kalsın
+                buy_lmt, sell_lmt = ok.price_limit(inst)
+                px = min(px, round_step(buy_lmt, tick, up=False)) if d == 1 else max(px, round_step(sell_lmt, tick, up=True))
+            except Exception as ex:
+                log(f"{inst} fiyat aralığı alınamadı: {ex}")
         stop = round_step(sg["lvl"] - d * SK * sg["atr"], tick, up=(d == -1))
         R = (px - stop) * d
         if R <= 0:
@@ -725,7 +736,8 @@ def hourly(ok, st, now):
             continue
         sd = (last - stop) * d                       # fiyatın stopa uzaklığı (pozitif olmalı)
         ld = (last - ps["liq"]) * d                  # fiyatın tasfiye fiyatına uzaklığı
-        if sd <= 0 or ld >= LIQ_BUFFER * sd:
+        # tasfiye fiyatı stopun ötesinde, stop uzaklığının %25'i (en az fiyatın %1'i) kadar pay bırakıyorsa sorun yok
+        if sd <= 0 or ld >= sd + max(0.25 * sd, 0.01 * last):
             continue
         need_pct = LIQ_BUFFER * sd / last + 0.005    # pozisyon değerine göre gereken teminat oranı (+ bakım payı)
         # tasfiye fiyatını belirleyen etkin teminat = yatırılan teminat + gerçekleşmemiş kâr/zarar
@@ -733,9 +745,7 @@ def hourly(ok, st, now):
         if amt <= 0.5:
             amt = 0.5
         try:
-            _, avail = ok.balance()
-            if CAPITAL > 0:
-                _, avail = virtual_balance(st, *ok.balance())
+            _, avail = ok.balance()                  # tasfiye güvenliği için hesabın gerçek boş bakiyesi kullanılır
             amt = min(amt, max(0.0, avail * 0.5))
             if amt < 0.5:
                 note(f"⚠️ {short(inst)}: tasfiye fiyatı ({fp(ps['liq'])}) stopa ({fp(stop)}) çok yakın ama eklenecek "
