@@ -1,0 +1,53 @@
+name: PA Gelistirme Testi
+
+# pa_gelistir.py: trend stratejisinde öncelik / yer sayısı / yön sınırı testi (2 yıl, eğitim/doğrulama).
+# Mesaj göndermez, emir vermez, botlara dokunmaz. Sonuç "pa-test-sonuclari" dalına gelistir_sonuc.md olarak eklenir.
+
+on:
+  push:
+    branches: [pa-strateji]
+    paths: [pa_gelistir.py]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: okx-pa-gelistir
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Trend testi verisini geri yukle
+        uses: actions/cache/restore@v4
+        with:
+          path: final_cache.json.gz
+          key: pa-final-${{ github.run_id }}
+          restore-keys: pa-final-
+      - run: pip install requests numpy
+      - run: python pa_gelistir.py
+      - name: Veriyi kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: final_cache.json.gz
+          key: pa-final-${{ github.run_id }}
+      - name: Sonucu pa-test-sonuclari dalina ekle
+        if: always()
+        run: |
+          [ -f gelistir_sonuc.md ] || exit 0
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git clone -q --depth 1 -b pa-test-sonuclari "$URL" /tmp/sonuc
+          cp gelistir_sonuc.md /tmp/sonuc/
+          cd /tmp/sonuc
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add gelistir_sonuc.md
+          git commit -q -m "Geliştirme testi (çalışma ${{ github.run_id }})" || exit 0
+          git push -q origin HEAD:pa-test-sonuclari
