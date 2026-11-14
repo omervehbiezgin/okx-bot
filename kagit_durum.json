@@ -1,0 +1,337 @@
+{
+ "zaman_tr": "2026-11-14 17:45",
+ "bakiye": 104.6,
+ "acik": [
+  {
+   "strateji": "K4H",
+   "coin": "ALGO",
+   "yon": "short",
+   "giris": 0.1035939125,
+   "stop": 0.107267,
+   "kar_al": 0.07791353383458646,
+   "anlik_fiyat": 0.08111,
+   "anlik_sonuc": 6.02,
+   "teminat": 9.4,
+   "acilis": "2026-10-29 19:15"
+  }
+ ],
+ "bekleyen": [
+  {
+   "strateji": "EMA21",
+   "coin": "ETH",
+   "yon": "short",
+   "giris": 2586.0,
+   "stop": 2690.5401428571427,
+   "kar_al": 2350.9090909090905,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "SOL",
+   "yon": "short",
+   "giris": 98.5,
+   "stop": 100.77778571428571,
+   "kar_al": 89.54545454545453,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "AVAX",
+   "yon": "short",
+   "giris": 9.347,
+   "stop": 9.613814285714286,
+   "kar_al": 8.497272727272726,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "LTC",
+   "yon": "short",
+   "giris": 59.81,
+   "stop": 61.2335,
+   "kar_al": 54.37272727272727,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "CRV",
+   "yon": "short",
+   "giris": 0.2911,
+   "stop": 0.3025528571428571,
+   "kar_al": 0.2646363636363636,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "CHIP",
+   "yon": "short",
+   "giris": 0.04504,
+   "stop": 0.048437214285714285,
+   "kar_al": 0.04094545454545454,
+   "bitis": "2026-11-16 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "BTC",
+   "yon": "short",
+   "giris": 82047.6,
+   "stop": 82823.69071428571,
+   "kar_al": 74588.72727272726,
+   "bitis": "2026-11-23 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "BCH",
+   "yon": "short",
+   "giris": 249.55,
+   "stop": 263.01264285714285,
+   "kar_al": 226.86363636363635,
+   "bitis": "2026-11-23 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "BNB",
+   "yon": "short",
+   "giris": 720.6,
+   "stop": 744.1429999999999,
+   "kar_al": 655.090909090909,
+   "bitis": "2026-11-23 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "PIEVERSE",
+   "yon": "long",
+   "giris": 1.2448,
+   "stop": 1.2023635714285714,
+   "kar_al": 1.36928,
+   "bitis": "2026-11-23 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "OKB",
+   "yon": "short",
+   "giris": 112.87,
+   "stop": 115.793,
+   "kar_al": 102.60909090909091,
+   "bitis": "2026-11-23 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "DASH",
+   "yon": "short",
+   "giris": 50.42,
+   "stop": 53.046,
+   "kar_al": 45.836363636363636,
+   "bitis": "2026-11-23 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "TIA",
+   "yon": "short",
+   "giris": 0.4492,
+   "stop": 0.46933714285714284,
+   "kar_al": 0.4083636363636363,
+   "bitis": "2026-11-23 03:00"
+  },
+  {
+   "strateji": "EMA21",
+   "coin": "AERO",
+   "yon": "short",
+   "giris": 0.6399,
+   "stop": 0.6961585714285715,
+   "kar_al": 0.5817272727272726,
+   "bitis": "2026-11-23 03:00"
+  },
+  {
+   "strateji": "K4H",
+   "coin": "DASH",
+   "yon": "short",
+   "giris": 46.28,
+   "stop": 48.644,
+   "kar_al": 34.796992481203006,
+   "bitis": "2026-11-14 23:00"
+  },
+  {
+   "strateji": "K4H",
+   "coin": "RE",
+   "yon": "short",
+   "giris": 0.285925,
+   "stop": 0.305635,
+   "kar_al": 0.21498120300751877,
+   "bitis": "2026-11-16 07:00"
+  },
+  {
+   "strateji": "FVG",
+   "coin": "KGEN",
+   "yon": "short",
+   "giris": 0.097975,
+   "stop": 0.10148392857142857,
+   "kar_al": 0.09095714285714288,
+   "bitis": "2026-11-15 11:00"
+  },
+  {
+   "strateji": "K4H",
+   "coin": "TRX",
+   "yon": "short",
+   "giris": 0.31767999999999996,
+   "stop": 0.32095599999999996,
+   "kar_al": 0.23885714285714282,
+   "bitis": "2026-11-17 07:00"
+  },
+  {
+   "strateji": "FVG",
+   "coin": "PARTI",
+   "yon": "short",
+   "giris": 0.04047,
+   "stop": 0.04331064285714285,
+   "kar_al": 0.03478871428571429,
+   "bitis": "2026-11-16 15:00"
+  },
+  {
+   "strateji": "FVG",
+   "coin": "BEAT",
+   "yon": "short",
+   "giris": 0.094745,
+   "stop": 0.10171728571428572,
+   "kar_al": 0.08080042857142855,
+   "bitis": "2026-11-16 19:00"
+  },
+  {
+   "strateji": "FVG",
+   "coin": "EDGE",
+   "yon": "short",
+   "giris": 0.36745,
+   "stop": 0.38518928571428573,
+   "kar_al": 0.33197142857142853,
+   "bitis": "2026-11-16 19:00"
+  }
+ ],
+ "son_kapananlar": [
+  {
+   "s": "K4H",
+   "inst": "MERL-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.037659418668837,
+   "neden": "stop",
+   "giris_t": 1793271633,
+   "cikis_t": 1793277029,
+   "cikis": "2026-10-29 15:30"
+  },
+  {
+   "s": "FVG",
+   "inst": "BICO-USDT-SWAP",
+   "yon": -1,
+   "sonuc": 1.9217931831063693,
+   "neden": "kâr al",
+   "giris_t": 1793288728,
+   "cikis_t": 1793293927,
+   "cikis": "2026-10-29 20:12"
+  },
+  {
+   "s": "FVG",
+   "inst": "S-USDT-SWAP",
+   "yon": 1,
+   "sonuc": -1.0601523864690152,
+   "neden": "stop",
+   "giris_t": 1793349822,
+   "cikis_t": 1793386849,
+   "cikis": "2026-10-30 22:00"
+  },
+  {
+   "s": "K4H",
+   "inst": "AAVE-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.038036237241233,
+   "neden": "stop",
+   "giris_t": 1793446674,
+   "cikis_t": 1793509257,
+   "cikis": "2026-11-01 08:00"
+  },
+  {
+   "s": "FVG",
+   "inst": "YFI-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.0439636083269084,
+   "neden": "stop",
+   "giris_t": 1793512601,
+   "cikis_t": 1793517713,
+   "cikis": "2026-11-01 10:21"
+  },
+  {
+   "s": "FVG",
+   "inst": "GIGGLE-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.0300632884648127,
+   "neden": "stop",
+   "giris_t": 1793522868,
+   "cikis_t": 1793870080,
+   "cikis": "2026-11-05 12:14"
+  },
+  {
+   "s": "K4H",
+   "inst": "JTO-USDT-SWAP",
+   "yon": -1,
+   "sonuc": 5.603766989317165,
+   "neden": "kâr al",
+   "giris_t": 1793289500,
+   "cikis_t": 1793893965,
+   "cikis": "2026-11-05 18:52"
+  },
+  {
+   "s": "EMA21",
+   "inst": "AAVE-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.0498909307264206,
+   "neden": "stop",
+   "giris_t": 1794189104,
+   "cikis_t": 1794228342,
+   "cikis": "2026-11-09 15:45"
+  },
+  {
+   "s": "FVG",
+   "inst": "UP-USDT-SWAP",
+   "yon": -1,
+   "sonuc": -1.0096441133421852,
+   "neden": "stop",
+   "giris_t": 1794020261,
+   "cikis_t": 1794238892,
+   "cikis": "2026-11-09 18:41"
+  },
+  {
+   "s": "EMA21",
+   "inst": "AR-USDT-SWAP",
+   "yon": -1,
+   "sonuc": 1.3449655277742192,
+   "neden": "kâr al",
+   "giris_t": 1794235540,
+   "cikis_t": 1794489001,
+   "cikis": "2026-11-12 16:10"
+  },
+  {
+   "s": "FVG",
+   "inst": "ETHFI-USDT-SWAP",
+   "yon": 1,
+   "sonuc": 1.8997331110637243,
+   "neden": "kâr al",
+   "giris_t": 1794489001,
+   "cikis_t": 1794518482,
+   "cikis": "2026-11-13 00:21"
+  },
+  {
+   "s": "EMA21",
+   "inst": "PYTH-USDT-SWAP",
+   "yon": -1,
+   "sonuc": 1.1018101283640516,
+   "neden": "kâr al",
+   "giris_t": 1794240937,
+   "cikis_t": 1794664989,
+   "cikis": "2026-11-14 17:03"
+  }
+ ],
+ "sayac": {
+  "atlanan": 30,
+  "iptal": 0,
+  "suresi_dolan": 52
+ },
+ "toplam_islem": 12
+}
